@@ -1,0 +1,92 @@
+---
+import { ClientRouter } from 'astro:transitions';
+import Starfield from '../components/Starfield.astro';
+import { sections } from '../data/sections';
+import '../styles/global.css';
+
+interface Props {
+	title?: string;
+	description?: string;
+}
+
+const { title, description = 'Personal portfolio of Daniel Beyer: web development, game development, and machine learning.' } = Astro.props;
+const fullTitle = title ? `${title} · Daniel Beyer` : 'Daniel Beyer';
+const path = Astro.url.pathname;
+---
+
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="description" content={description} />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		<link
+			href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap"
+			rel="stylesheet"
+		/>
+		<title>{fullTitle}</title>
+		<ClientRouter />
+	</head>
+	<body>
+		<Starfield />
+		<header class="site-header container">
+			<a class="logo" href="/">DB</a>
+			<nav aria-label="Main">
+				{
+					sections.map((s) => (
+						<a href={s.href} aria-current={path.startsWith(s.href) ? 'page' : undefined}>
+							{s.title}
+						</a>
+					))
+				}
+			</nav>
+		</header>
+		<main class="container" transition:animate="slide">
+			<slot />
+		</main>
+	</body>
+</html>
+
+<style>
+	.site-header {
+		display: flex;
+		align-items: center;
+		gap: 24px;
+		padding-block: 20px;
+	}
+	.logo {
+		font-family: var(--font-display);
+		font-weight: 700;
+		font-size: 1.3rem;
+		color: var(--text);
+		text-decoration: none;
+		border: 1px solid var(--border-strong);
+		border-radius: 10px;
+		padding: 4px 10px;
+	}
+	nav {
+		display: flex;
+		gap: 4px 16px;
+		flex-wrap: wrap;
+		font-size: 0.9rem;
+	}
+	nav a {
+		color: var(--text-muted);
+		text-decoration: none;
+		transition: color 0.2s;
+	}
+	nav a:hover,
+	nav a[aria-current='page'] {
+		color: var(--text);
+	}
+	main {
+		padding-block: 32px 80px;
+	}
+	@media (max-width: 720px) {
+		.site-header {
+			align-items: flex-start;
+		}
+	}
+</style>

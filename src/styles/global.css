@@ -1,0 +1,66 @@
+:root {
+	--bg: #05070f;
+	--bg-raised: rgba(14, 22, 44, 0.72);
+	--border: rgba(120, 160, 255, 0.18);
+	--border-strong: rgba(120, 180, 255, 0.5);
+	--text: #e6ecff;
+	--text-muted: #93a1c4;
+	--accent: #6fb6ff;
+	--accent-2: #8a7dff;
+	--radius: 14px;
+	--font: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+	--font-display: 'Space Grotesk', var(--font);
+	color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+/* Background lives on html only: a body background would cover the fixed z-index:-1 starfield. */
+html {
+	background: var(--bg);
+}
+
+body {
+	margin: 0;
+	color: var(--text);
+	font-family: var(--font);
+	line-height: 1.6;
+	-webkit-font-smoothing: antialiased;
+}
+
+a {
+	color: var(--accent);
+}
+
+h1,
+h2,
+h3 {
+	font-family: var(--font-display);
+	line-height: 1.15;
+	letter-spacing: -0.01em;
+}
+
+.container {
+	width: min(1100px, 100% - 32px);
+	margin-inline: auto;
+}
+
+.card {
+	background: var(--bg-raised);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	backdrop-filter: blur(8px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		transition-duration: 0.01ms !important;
+	}
+}

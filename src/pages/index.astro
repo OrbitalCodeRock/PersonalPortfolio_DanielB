@@ -1,0 +1,77 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import HubGrid from '../components/HubGrid.astro';
+import { sections, socials } from '../data/sections';
+---
+
+<BaseLayout>
+	<section class="hero">
+		<p class="eyebrow">Web · Games · Machine Learning</p>
+		<h1>Hi, I'm <span class="gradient">Daniel Beyer</span>.</h1>
+		<p class="lede">
+			I'm a developer who builds websites, games, and machine learning projects. Pick a destination below to explore.
+		</p>
+		<ul class="socials">
+			{
+				socials.map((s) => (
+					<li>
+						<a href={s.href} target="_blank" rel="noopener">
+							{s.label}
+						</a>
+					</li>
+				))
+			}
+		</ul>
+	</section>
+
+	<HubGrid items={sections} />
+</BaseLayout>
+
+<style>
+	.hero {
+		padding-block: 8vh 48px;
+		max-width: 720px;
+	}
+	.eyebrow {
+		margin: 0 0 12px;
+		color: var(--accent);
+		font-size: 0.85rem;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+	}
+	h1 {
+		margin: 0 0 16px;
+		font-size: clamp(2.4rem, 6vw, 4rem);
+	}
+	.gradient {
+		background: linear-gradient(90deg, var(--accent), var(--accent-2));
+		-webkit-background-clip: text;
+		background-clip: text;
+		color: transparent;
+	}
+	.lede {
+		margin: 0 0 20px;
+		color: var(--text-muted);
+		font-size: 1.15rem;
+	}
+	.socials {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		display: flex;
+		gap: 12px;
+	}
+	.socials a {
+		display: inline-block;
+		padding: 6px 14px;
+		border: 1px solid var(--border);
+		border-radius: 999px;
+		color: var(--text);
+		text-decoration: none;
+		font-size: 0.9rem;
+		transition: border-color 0.2s;
+	}
+	.socials a:hover {
+		border-color: var(--border-strong);
+	}
+</style>

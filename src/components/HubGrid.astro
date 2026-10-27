@@ -1,0 +1,81 @@
+---
+import type { Section } from '../data/sections';
+
+interface Props {
+	items: Section[];
+}
+
+const { items } = Astro.props;
+---
+
+<ul class="hub-grid">
+	{
+		items.map((s) => (
+			<li>
+				<a class="hub-card card" href={s.href}>
+					<h3>{s.title}</h3>
+					<p>{s.blurb}</p>
+					<span class="arrow" aria-hidden="true">→</span>
+				</a>
+			</li>
+		))
+	}
+</ul>
+
+<style>
+	.hub-grid {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+		gap: 16px;
+	}
+	.hub-card {
+		position: relative;
+		display: block;
+		height: 100%;
+		padding: 22px 22px 40px;
+		color: inherit;
+		text-decoration: none;
+		transition:
+			border-color 0.25s,
+			transform 0.25s,
+			box-shadow 0.25s;
+	}
+	.hub-card:hover,
+	.hub-card:focus-visible {
+		border-color: var(--border-strong);
+		transform: translateY(-3px);
+		box-shadow: 0 10px 40px -12px rgba(111, 182, 255, 0.35);
+	}
+	h3 {
+		margin: 0 0 6px;
+		font-size: 1.15rem;
+	}
+	p {
+		margin: 0;
+		color: var(--text-muted);
+		font-size: 0.95rem;
+	}
+	.arrow {
+		position: absolute;
+		right: 20px;
+		bottom: 14px;
+		color: var(--accent);
+		transition: transform 0.25s;
+	}
+	.hub-card:hover .arrow {
+		transform: translateX(4px);
+	}
+</style>
+
+<script>
+	import { gsap } from 'gsap';
+
+	// Module scripts run once; re-run the entrance on every client-side navigation.
+	document.addEventListener('astro:page-load', () => {
+		if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+		gsap.from('.hub-card', { opacity: 0, y: 24, duration: 0.6, stagger: 0.06, ease: 'power3.out' });
+	});
+</script>
