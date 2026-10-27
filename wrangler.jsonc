@@ -1,0 +1,9 @@
+// Cloudflare Workers config. The site is fully static, so the Worker just
+// serves the Astro build output from ./dist.
+{
+	"name": "personalportfolio-danielb",
+	"compatibility_date": "2026-10-26",
+	"assets": {
+		"directory": "./dist"
+	}
+}

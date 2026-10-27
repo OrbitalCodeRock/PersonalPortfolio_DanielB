@@ -1,7 +1,7 @@
 # Daniel Beyer — Personal Portfolio
 
 Personal portfolio site built with [Astro](https://astro.build), [GSAP](https://gsap.com) and [Three.js](https://threejs.org).
-Deployed on Cloudflare Pages from the `main` branch.
+Deployed on Cloudflare Workers (static assets, see `wrangler.jsonc`) from the `main` branch.
 
 ## Commands
 
