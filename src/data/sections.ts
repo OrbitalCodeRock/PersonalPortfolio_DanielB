@@ -5,6 +5,9 @@ export interface Section {
 	blurb: string;
 }
 
+// Hub cards and nav links are listed alphabetically by title.
+const byTitle = (a: Section, b: Section) => a.title.localeCompare(b.title);
+
 export const sections: Section[] = [
 	{ href: '/about', title: 'About Me', blurb: 'Who I am and what I care about.' },
 	{ href: '/education', title: 'Education', blurb: 'Glenbrook South, Illinois State, and NIU.' },
@@ -15,13 +18,13 @@ export const sections: Section[] = [
 	{ href: '/skills', title: 'Skills', blurb: 'What I know, by category.' },
 	{ href: '/certifications', title: 'Certifications', blurb: 'Licenses and certifications.' },
 	{ href: '/now', title: 'Now', blurb: 'What I am working on right now.' },
-];
+].sort(byTitle);
 
 export const portfolios: Section[] = [
 	{ href: '/portfolios/web', title: 'Web Development', blurb: 'Sites I have built, including NTR.' },
 	{ href: '/portfolios/games', title: 'Game Development', blurb: 'Games on itch.io and GitHub.' },
 	{ href: '/portfolios/ml', title: 'Machine Learning', blurb: 'Models, experiments, and demos.' },
-];
+].sort(byTitle);
 
 export const socials = [
 	{ href: 'https://www.linkedin.com/', label: 'LinkedIn' },
