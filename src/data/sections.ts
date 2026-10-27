@@ -26,5 +26,5 @@ export const portfolios: Section[] = [
 export const socials = [
 	{ href: 'https://www.linkedin.com/', label: 'LinkedIn' },
 	{ href: 'https://itch.io/', label: 'itch.io' },
-	{ href: 'https://github.com/DanielOnCall', label: 'GitHub' },
+	{ href: 'https://github.com/OrbitalCodeRock', label: 'GitHub' },
 ];
