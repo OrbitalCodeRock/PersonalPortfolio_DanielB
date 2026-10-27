@@ -1,0 +1,293 @@
+---
+// Home page overlay for the planet views in src/scripts/cosmos.ts:
+// the eye button, planet cards, constellation labels, and controls.
+import type { Section } from '../data/sections';
+
+interface Props {
+	items: Section[];
+}
+
+const { items } = Astro.props;
+---
+
+<div data-planet-explorer>
+	<button class="eye-btn is-hidden" type="button" aria-label="Explore the planet" data-eye>
+		<svg viewBox="0 0 48 48" aria-hidden="true">
+			<polygon class="hex" points="24,3 42,13.5 42,34.5 24,45 6,34.5 6,13.5"></polygon>
+			<path class="eye" d="M12 24c3.5-5.5 7.5-8 12-8s8.5 2.5 12 8c-3.5 5.5-7.5 8-12 8s-8.5-2.5-12-8z"></path>
+			<circle class="pupil" cx="24" cy="24" r="3.5"></circle>
+		</svg>
+	</button>
+
+	<div class="stage" data-stage inert>
+		<div class="stage-bar">
+			<button class="back-btn" type="button" data-back>
+				<span aria-hidden="true">←</span>
+				<span class="back-planet">Back to home</span>
+				<span class="back-surface">Back to the planet</span>
+			</button>
+			<p class="hint hint-planet">Drag to spin the planet.</p>
+			<p class="hint hint-surface">You found the landing site. Drag to look around the sky.</p>
+		</div>
+
+		<div class="planet-cards" data-planet-cards>
+			{
+				items.map((s) => (
+					<a class="planet-card" href={s.href} data-planet-card>
+						<strong>{s.title}</strong>
+						<span>{s.blurb}</span>
+					</a>
+				))
+			}
+		</div>
+
+		<div class="star-labels" data-star-labels>
+			{
+				items.map((s) => (
+					<a class="star-label" href={s.href} data-star-label>
+						{s.title}
+					</a>
+				))
+			}
+		</div>
+	</div>
+</div>
+
+<style>
+	.eye-btn {
+		position: fixed;
+		left: 0;
+		top: 0;
+		z-index: 5;
+		width: 56px;
+		height: 56px;
+		padding: 0;
+		border: 0;
+		background: none;
+		color: var(--accent);
+		cursor: pointer;
+		opacity: 0.5;
+		transition: opacity 0.3s;
+	}
+	.eye-btn svg {
+		width: 100%;
+		height: 100%;
+		overflow: visible;
+		transition:
+			transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
+			filter 0.3s;
+	}
+	.hex {
+		fill: rgba(111, 182, 255, 0.08);
+		stroke: currentColor;
+		stroke-width: 1.5;
+	}
+	.eye {
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 1.5;
+	}
+	.pupil {
+		fill: currentColor;
+	}
+	.eye-btn:hover,
+	.eye-btn:focus-visible {
+		opacity: 1;
+	}
+	.eye-btn:hover svg,
+	.eye-btn:focus-visible svg {
+		transform: scale(1.2);
+		filter: drop-shadow(0 0 10px rgba(111, 182, 255, 0.8));
+	}
+	.eye-btn.is-hidden {
+		opacity: 0;
+		pointer-events: none;
+	}
+
+	.stage {
+		position: fixed;
+		inset: 0;
+		z-index: 4;
+		touch-action: none;
+		cursor: grab;
+		user-select: none;
+		opacity: 0;
+		visibility: hidden;
+		transition:
+			opacity 0.5s,
+			visibility 0s 0.5s;
+	}
+	.stage:active {
+		cursor: grabbing;
+	}
+	.stage.is-over-egg {
+		cursor: pointer;
+	}
+	:global(body[data-view='planet']) .stage,
+	:global(body[data-view='surface']) .stage {
+		opacity: 1;
+		visibility: visible;
+		transition: opacity 0.6s 0.6s;
+	}
+
+	.stage-bar {
+		position: absolute;
+		top: 20px;
+		left: 16px;
+		right: 16px;
+		z-index: 200;
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 8px 16px;
+		pointer-events: none;
+	}
+	.back-btn {
+		display: inline-flex;
+		gap: 6px;
+		pointer-events: auto;
+		padding: 8px 16px;
+		border: 1px solid var(--border-strong);
+		border-radius: 999px;
+		background: rgba(10, 16, 34, 0.8);
+		color: var(--text);
+		font: inherit;
+		font-size: 0.9rem;
+		cursor: pointer;
+		transition: border-color 0.2s;
+	}
+	.back-btn:hover {
+		border-color: var(--accent);
+	}
+	.hint {
+		margin: 0;
+		color: var(--text-muted);
+		font-size: 0.9rem;
+	}
+	.back-surface,
+	.hint-surface,
+	:global(body[data-view='surface']) .back-planet,
+	:global(body[data-view='surface']) .hint-planet {
+		display: none;
+	}
+	:global(body[data-view='surface']) .back-surface,
+	:global(body[data-view='surface']) .hint-surface {
+		display: inline;
+	}
+
+	.planet-cards,
+	.star-labels {
+		position: absolute;
+		inset: 0;
+		pointer-events: none;
+		opacity: 0;
+		transition: opacity 0.5s;
+	}
+	:global(body[data-view='planet']) .planet-cards,
+	:global(body[data-view='surface']) .star-labels {
+		opacity: 1;
+	}
+
+	.planet-card {
+		position: absolute;
+		left: 0;
+		top: 0;
+		width: 200px;
+		padding: 10px 14px;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		background: rgba(10, 16, 34, 0.85);
+		border: 1px solid var(--border-strong);
+		border-radius: 12px;
+		box-shadow: 0 8px 30px -10px rgba(0, 0, 0, 0.7);
+		color: var(--text);
+		text-decoration: none;
+		transform-origin: bottom center;
+		will-change: transform, opacity;
+		transition: border-color 0.2s;
+	}
+	.planet-card:hover,
+	.planet-card:focus-visible {
+		border-color: var(--accent);
+	}
+	.planet-card strong {
+		font-family: var(--font-display);
+		font-size: 0.95rem;
+	}
+	.planet-card span {
+		display: none;
+		color: var(--text-muted);
+		font-size: 0.8rem;
+		line-height: 1.4;
+	}
+	.planet-card:global(.is-near) span {
+		display: block;
+	}
+
+	.star-label {
+		position: absolute;
+		left: 0;
+		top: 0;
+		pointer-events: auto;
+		padding: 3px 10px;
+		border: 1px solid transparent;
+		border-radius: 999px;
+		background: rgba(5, 7, 15, 0.55);
+		color: var(--text);
+		font-size: 0.85rem;
+		letter-spacing: 0.04em;
+		text-decoration: none;
+		white-space: nowrap;
+		transition: border-color 0.2s;
+	}
+	.star-label:hover,
+	.star-label:focus-visible {
+		border-color: var(--border-strong);
+	}
+</style>
+
+<script>
+	import { bindHome, getView, isBusy, setView, type View } from '../scripts/cosmos';
+
+	let pageAbort: AbortController | null = null;
+
+	// Module scripts run once; rebind on every client-side navigation to the home page.
+	document.addEventListener('astro:page-load', () => {
+		pageAbort?.abort();
+		const root = document.querySelector<HTMLElement>('[data-planet-explorer]');
+		if (!root) return;
+		pageAbort = new AbortController();
+		const { signal } = pageAbort;
+
+		const eye = root.querySelector<HTMLElement>('[data-eye]')!;
+		const stage = root.querySelector<HTMLElement>('[data-stage]')!;
+		const planetCards = root.querySelector<HTMLElement>('[data-planet-cards]')!;
+		const starLabels = root.querySelector<HTMLElement>('[data-star-labels]')!;
+		const cards = [...root.querySelectorAll<HTMLElement>('[data-planet-card]')];
+		const labels = [...root.querySelectorAll<HTMLElement>('[data-star-label]')];
+
+		const go = async (target: View) => {
+			if (isBusy() || getView() === target) return;
+			if (target !== 'orbit') window.scrollTo({ top: 0 });
+			document.body.dataset.view = target;
+			stage.inert = target === 'orbit';
+			planetCards.inert = target !== 'planet';
+			starLabels.inert = target !== 'surface';
+			await setView(target);
+			if (target !== 'orbit') root.querySelector<HTMLElement>('[data-back]')!.focus({ preventScroll: true });
+		};
+		const back = () => go(getView() === 'surface' ? 'planet' : 'orbit');
+
+		bindHome({ eye, stage, cards, labels, onEgg: () => go('surface') });
+		eye.addEventListener('click', () => go('planet'), { signal });
+		root.querySelector('[data-back]')!.addEventListener('click', back, { signal });
+		document.addEventListener(
+			'keydown',
+			(e) => {
+				if (e.key === 'Escape' && getView() !== 'orbit') back();
+			},
+			{ signal },
+		);
+	});
+</script>
