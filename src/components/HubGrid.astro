@@ -74,8 +74,17 @@ const { items } = Astro.props;
 	import { gsap } from 'gsap';
 
 	// Module scripts run once; re-run the entrance on every client-side navigation.
+	// Animates the <li> wrappers, not .hub-card: the cards have a CSS transform
+	// transition for hover, which fights GSAP and can leave cards stuck offset.
 	document.addEventListener('astro:page-load', () => {
 		if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-		gsap.from('.hub-card', { opacity: 0, y: 24, duration: 0.6, stagger: 0.06, ease: 'power3.out' });
+		const items = document.querySelectorAll('.hub-grid > li');
+		if (!items.length) return;
+		gsap.killTweensOf(items);
+		gsap.fromTo(
+			items,
+			{ opacity: 0, y: 24 },
+			{ opacity: 1, y: 0, duration: 0.6, stagger: 0.06, ease: 'power3.out', clearProps: 'opacity,transform' },
+		);
 	});
 </script>
