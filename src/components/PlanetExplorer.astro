@@ -2,6 +2,7 @@
 // Home page overlay for the planet views in src/scripts/cosmos.ts:
 // the eye button, planet cards, constellation labels, and controls.
 import type { Section } from '../data/sections';
+import PlanetEye from './PlanetEye.astro';
 
 interface Props {
 	items: Section[];
@@ -11,13 +12,7 @@ const { items } = Astro.props;
 ---
 
 <div data-planet-explorer>
-	<button class="eye-btn is-hidden" type="button" aria-label="Explore the planet" data-eye>
-		<svg viewBox="0 0 48 48" aria-hidden="true">
-			<polygon class="hex" points="24,3 42,13.5 42,34.5 24,45 6,34.5 6,13.5"></polygon>
-			<path class="eye" d="M12 24c3.5-5.5 7.5-8 12-8s8.5 2.5 12 8c-3.5 5.5-7.5 8-12 8s-8.5-2.5-12-8z"></path>
-			<circle class="pupil" cx="24" cy="24" r="3.5"></circle>
-		</svg>
-	</button>
+	<PlanetEye label="Explore the planet" data-eye />
 
 	<div class="stage" data-stage inert>
 		<div class="stage-bar">
@@ -26,7 +21,7 @@ const { items } = Astro.props;
 				<span class="back-planet">Back to home</span>
 				<span class="back-surface">Back to the planet</span>
 			</button>
-			<p class="hint hint-planet">Drag to spin the planet.</p>
+			<p class="hint hint-planet">Drag to spin the planet. Pick a card to land there.</p>
 			<p class="hint hint-surface">You found the landing site. Drag to look around the sky.</p>
 		</div>
 
@@ -54,56 +49,6 @@ const { items } = Astro.props;
 </div>
 
 <style>
-	.eye-btn {
-		position: fixed;
-		left: 0;
-		top: 0;
-		z-index: 5;
-		width: 56px;
-		height: 56px;
-		padding: 0;
-		border: 0;
-		background: none;
-		color: var(--accent);
-		cursor: pointer;
-		opacity: 0.5;
-		transition: opacity 0.3s;
-	}
-	.eye-btn svg {
-		width: 100%;
-		height: 100%;
-		overflow: visible;
-		transition:
-			transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
-			filter 0.3s;
-	}
-	.hex {
-		fill: rgba(111, 182, 255, 0.08);
-		stroke: currentColor;
-		stroke-width: 1.5;
-	}
-	.eye {
-		fill: none;
-		stroke: currentColor;
-		stroke-width: 1.5;
-	}
-	.pupil {
-		fill: currentColor;
-	}
-	.eye-btn:hover,
-	.eye-btn:focus-visible {
-		opacity: 1;
-	}
-	.eye-btn:hover svg,
-	.eye-btn:focus-visible svg {
-		transform: scale(1.2);
-		filter: drop-shadow(0 0 10px rgba(111, 182, 255, 0.8));
-	}
-	.eye-btn.is-hidden {
-		opacity: 0;
-		pointer-events: none;
-	}
-
 	.stage {
 		position: fixed;
 		inset: 0;
@@ -188,6 +133,15 @@ const { items } = Astro.props;
 		opacity: 1;
 	}
 
+	/* While flying to a card or star, clear the UI out of the way. */
+	.stage.is-traveling .stage-bar,
+	.stage.is-traveling .planet-cards,
+	.stage.is-traveling .star-labels {
+		opacity: 0;
+		pointer-events: none;
+		transition: opacity 0.3s;
+	}
+
 	.planet-card {
 		position: absolute;
 		left: 0;
@@ -248,7 +202,17 @@ const { items } = Astro.props;
 </style>
 
 <script>
-	import { bindHome, getView, isBusy, setView, type View } from '../scripts/cosmos';
+	import { navigate } from 'astro:transitions/client';
+	import {
+		bindHome,
+		diveToCard,
+		flyToStar,
+		getView,
+		isBusy,
+		setView,
+		takePlanetRequest,
+		type View,
+	} from '../scripts/cosmos';
 
 	let pageAbort: AbortController | null = null;
 
@@ -279,7 +243,23 @@ const { items } = Astro.props;
 		};
 		const back = () => go(getView() === 'surface' ? 'planet' : 'orbit');
 
+		// Fly to the clicked card or star, then load the page right where the camera ends up.
+		// Modified clicks (new tab, etc.) keep their normal behavior.
+		const travel = async (e: MouseEvent, fly: () => Promise<void>) => {
+			if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+			e.preventDefault();
+			if (isBusy()) return;
+			const { href } = e.currentTarget as HTMLAnchorElement;
+			stage.classList.add('is-traveling');
+			await fly();
+			navigate(href);
+		};
+		cards.forEach((card, i) => card.addEventListener('click', (e) => travel(e, () => diveToCard(i)), { signal }));
+		labels.forEach((label, i) => label.addEventListener('click', (e) => travel(e, () => flyToStar(i)), { signal }));
+
 		bindHome({ eye, stage, cards, labels, onEgg: () => go('surface') });
+		// Arriving from the eye over the faraway planet: fly straight into the planet view.
+		if (takePlanetRequest()) go('planet');
 		eye.addEventListener('click', () => go('planet'), { signal });
 		root.querySelector('[data-back]')!.addEventListener('click', back, { signal });
 		document.addEventListener(

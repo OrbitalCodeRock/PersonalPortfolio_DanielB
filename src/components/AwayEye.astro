@@ -1,0 +1,21 @@
+---
+// Eye over the faraway planet on pages reached through a constellation star.
+// Clicking it heads home and flies straight back into the planet view.
+import PlanetEye from './PlanetEye.astro';
+---
+
+<PlanetEye label="Return to the planet" data-away-eye />
+
+<script>
+	import { navigate } from 'astro:transitions/client';
+	import { bindAwayEye, requestPlanetView } from '../scripts/cosmos';
+
+	document.addEventListener('astro:page-load', () => {
+		const eye = document.querySelector<HTMLElement>('[data-away-eye]');
+		bindAwayEye(eye);
+		eye?.addEventListener('click', () => {
+			requestPlanetView();
+			navigate('/');
+		});
+	});
+</script>

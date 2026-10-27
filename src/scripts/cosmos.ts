@@ -6,10 +6,13 @@
 //             section cards are pinned to points on its surface
 //   surface - easter egg: the visitor stands on the planet and the section
 //             cards become a constellation in the sky
+//   inside  - page background after diving into the planet at a card
+//   distant - page background after flying through a constellation star
 import * as THREE from 'three';
 import { gsap } from 'gsap';
 
-export type View = 'orbit' | 'planet' | 'surface';
+// inside and distant are page backgrounds after a trip (see reset()).
+export type View = 'orbit' | 'planet' | 'surface' | 'inside' | 'distant';
 
 export interface HomeBinding {
 	eye: HTMLElement;
@@ -30,6 +33,7 @@ interface SurfaceFrame {
 	n: THREE.Vector3; // up, away from the planet
 	t: THREE.Vector3; // forward along the ground
 	r: THREE.Vector3; // right
+	axis: THREE.Vector3; // the planet's spin axis, which the sky turns around
 }
 
 const RADIUS = 2.2;
@@ -41,6 +45,24 @@ const DRAG_THRESHOLD = 6;
 const ORBIT_FOV = 60;
 const PLANET_FOV = 55;
 const SURFACE_FOV = 80;
+// Starfield drift (radians per second) in each view; 0 holds the stars still.
+// Try 0.003 for a barely noticeable drift. In the surface view this is the
+// planet's rotation instead: the background sky turns around the planet's axis,
+// while the constellation stays fixed for the viewer.
+const STAR_DRIFT_SPEED: Record<View, number> = {
+	orbit: 0.01,
+	planet: 0,
+	surface: 0.01,
+	inside: 0,
+	distant: 0,
+};
+
+// Idle planet spin (radians per second) behind pages reached by a trip.
+// Inside the planet the walls move around you, so keep that one slow; 0 stops it.
+const INSIDE_SPIN_SPEED = 0.01;
+const DISTANT_SPIN_SPEED = 0.04;
+const FAR_DISTANCE = 26;
+const FAR_FOV = 45;
 const ORBIT_EDGE_OPACITY = 0.12;
 const PLANET_EDGE_OPACITY = 0.32;
 
@@ -95,6 +117,11 @@ let surfaceFrame: SurfaceFrame | null = null;
 
 let view: View = 'orbit';
 let busy = false;
+// Set when the camera finishes a trip to a card or star; the next page opens there.
+let arrival: 'planet' | 'star' | null = null;
+// Set by the eye on a faraway page: the home page should fly from here into the planet view.
+let planetRequested = false;
+let awayEye: HTMLElement | null = null;
 let binding: HomeBinding | null = null;
 let bindingAbort: AbortController | null = null;
 
@@ -181,8 +208,16 @@ export function initCosmos(canvas: HTMLCanvasElement) {
 		const dt = Math.min(clock.getDelta(), 0.05);
 		const t = clock.elapsedTime;
 		if (!reduceMotion) {
-			stars.rotation.y = t * 0.01;
-			stars.rotation.x = t * 0.004;
+			const drift = STAR_DRIFT_SPEED[view];
+			if (view === 'surface' && surfaceFrame && !busy) {
+				// Turn the starfield around the planet's axis (through the planet's center).
+				const angle = -dt * drift;
+				stars.position.sub(planet.position).applyAxisAngle(surfaceFrame.axis, angle).add(planet.position);
+				stars.rotateOnWorldAxis(surfaceFrame.axis, angle);
+			} else if (view !== 'surface') {
+				stars.rotation.y += dt * drift;
+				stars.rotation.x += dt * drift * 0.4;
+			}
 		}
 		egg.rotation.y = t * 1.5;
 		egg.scale.setScalar(1 + 0.25 * Math.sin(t * 3));
@@ -191,6 +226,7 @@ export function initCosmos(canvas: HTMLCanvasElement) {
 			if (view === 'orbit') updateOrbit(dt);
 			else if (view === 'planet') updatePlanet();
 			else if (view === 'surface') applyPose(surfacePose());
+			else if (!reduceMotion) planet.rotateY(dt * (view === 'inside' ? INSIDE_SPIN_SPEED : DISTANT_SPIN_SPEED));
 		}
 
 		camera.updateMatrixWorld();
@@ -249,8 +285,32 @@ function unbindHome() {
 	}
 }
 
-/** Snap back to the default background immediately (used before navigating away). */
+/**
+ * Called before navigating away. After a trip into the planet or through a
+ * star, the new page keeps a background that shows where you went (inside the
+ * planet, or far away from it); otherwise snap back to the default background.
+ */
 export function reset() {
+	if (planetRequested) {
+		// Hold the camera where it is (busy blocks the orbit updates) until the
+		// home page takes the request and flies into the planet view.
+		unbindHome();
+		view = 'orbit';
+		busy = true;
+		return;
+	}
+	if (arrival) {
+		const from = arrival;
+		arrival = null;
+		unbindHome();
+		if (from === 'planet') {
+			view = 'inside';
+			busy = false;
+		} else {
+			void settleFarAway();
+		}
+		return;
+	}
 	for (const tween of activeTweens) tween.kill();
 	activeTweens.clear();
 	busy = false;
@@ -258,7 +318,7 @@ export function reset() {
 	drag.active = false;
 	spin.x = spin.y = 0;
 	planet.position.copy(orbitPlanetPosition());
-	stars.position.z = 0;
+	stars.position.set(0, 0, 0);
 	edgesMaterial.opacity = ORBIT_EDGE_OPACITY;
 	coreMaterial.opacity = 0;
 	core.visible = false;
@@ -268,6 +328,24 @@ export function reset() {
 	surfaceFrame = null;
 	applyPose(orbitPose());
 	unbindHome();
+}
+
+/** The eye shown over the faraway planet; null when the page has none. */
+export function bindAwayEye(el: HTMLElement | null) {
+	awayEye = el;
+}
+
+/** Ask the next page (home) to fly from the current camera position into the planet view. */
+export function requestPlanetView() {
+	planetRequested = true;
+}
+
+/** Home page: true (once) if it should open straight into the planet view. */
+export function takePlanetRequest(): boolean {
+	if (!planetRequested) return false;
+	planetRequested = false;
+	busy = false;
+	return true;
 }
 
 export async function setView(target: View) {
@@ -286,6 +364,73 @@ export async function setView(target: View) {
 	}
 }
 
+/**
+ * Planet view: swoop down to a card's marker, then plunge inside the planet.
+ * Stays busy afterwards; the page navigation that follows calls reset().
+ */
+export async function diveToCard(index: number) {
+	const marker = markers.children[index];
+	if (busy || view !== 'planet' || !marker) return;
+	busy = true;
+	spin.x = spin.y = 0;
+	const site = marker.getWorldPosition(new THREE.Vector3());
+	const n = site.clone().sub(planet.position).normalize();
+	const up = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+	await flyTo(poseLookingAt(site.clone().addScaledVector(n, 1.4), site, up, 50), 0.9);
+	await Promise.all([
+		flyTo(poseLookingAt(site.clone().addScaledVector(n, -0.6), planet.position, up, 50), 0.7, 25, 'power2.in'),
+		tween(markerMaterial, { opacity: 0, duration: 0.5 }),
+		tween(eggMaterial, { opacity: 0, duration: 0.5 }),
+	]);
+	arrival = 'planet';
+}
+
+/**
+ * Surface view: turn toward a constellation star and fly through it. The
+ * starfield travels along at half the camera's speed, so the camera crosses it
+ * and stars stream past. Stays busy afterwards; the page navigation that
+ * follows calls reset().
+ */
+export async function flyToStar(index: number) {
+	const star = skyPoints[index];
+	if (busy || view !== 'surface' || !star || !surfaceFrame) return;
+	busy = true;
+	const dir = star.clone().sub(camera.position).normalize();
+	const beyond = star.clone().addScaledVector(dir, 2.5);
+	const starfieldEnd = stars.position.clone().lerp(beyond, 0.5);
+	await Promise.all([
+		flyTo(poseLookingAt(beyond, beyond.clone().add(dir), surfaceFrame.n, SURFACE_FOV), 1.9, 20, 'power3.in'),
+		tween(stars.position, { ...xyz(starfieldEnd), duration: 1.9, ease: 'power3.in' }),
+		tween(skyLineMaterial!, { opacity: 0, duration: 0.5, delay: 1.1 }),
+		tween(skyStarMaterial!, { opacity: 0, duration: 0.4, delay: 1.5 }),
+	]);
+	arrival = 'star';
+}
+
+/**
+ * After flying through a star: turn around to face the planet and settle at a
+ * distance where it looks small, off to the side of the page content.
+ */
+async function settleFarAway() {
+	busy = true;
+	view = 'distant';
+	const away = camera.position.clone().sub(planet.position).normalize();
+	const up = Math.abs(away.dot(WORLD_UP)) > 0.95 ? new THREE.Vector3(0, 0, 1) : WORLD_UP;
+	const eye = planet.position.clone().addScaledVector(away, FAR_DISTANCE);
+	// Aim a little to the planet's left so it sits on the right side of the screen.
+	const right = new THREE.Vector3().crossVectors(away.clone().negate(), up).normalize();
+	const target = planet.position.clone().addScaledVector(right, -FAR_DISTANCE * 0.22);
+	// Settle the starfield halfway between the planet and the camera, so both sit inside it.
+	const starfieldEnd = planet.position.clone().addScaledVector(away, FAR_DISTANCE * 0.5);
+	await Promise.all([
+		flyTo(poseLookingAt(eye, target, up, FAR_FOV), 3),
+		tween(stars.position, { ...xyz(starfieldEnd), duration: 3, ease: 'power2.inOut' }),
+	]);
+	removeSky();
+	surfaceFrame = null;
+	busy = false;
+}
+
 // ---------------------------------------------------------------------------
 // View transitions
 
@@ -296,7 +441,7 @@ async function orbitToPlanet() {
 		flyTo(planetPose(), 1.8, 22),
 		tween(planet.position, { x: 0, y: 0, z: 0, duration: 1.8, ease: 'power2.inOut' }),
 		// Pushing the starfield past the camera sells the "flying through space" feel.
-		tween(stars.position, { z: 14, duration: 1.8, ease: 'power2.inOut' }),
+		tween(stars.position, { x: 0, y: 0, z: 14, duration: 1.8, ease: 'power2.inOut' }),
 		tween(edgesMaterial, { opacity: PLANET_EDGE_OPACITY, duration: 1.8 }),
 		tween(coreMaterial, { opacity: 1, duration: 1.2, delay: 0.4 }),
 		tween(markerMaterial, { opacity: 1, duration: 0.8, delay: 1.1 }),
@@ -308,7 +453,7 @@ async function planetToOrbit() {
 	await Promise.all([
 		flyTo(orbitPose(), 1.6, 18),
 		tween(planet.position, { ...xyz(orbitPlanetPosition()), duration: 1.6, ease: 'power2.inOut' }),
-		tween(stars.position, { z: 0, duration: 1.6, ease: 'power2.inOut' }),
+		tween(stars.position, { x: 0, y: 0, z: 0, duration: 1.6, ease: 'power2.inOut' }),
 		tween(edgesMaterial, { opacity: ORBIT_EDGE_OPACITY, duration: 1.6 }),
 		tween(coreMaterial, { opacity: 0, duration: 1 }),
 		tween(markerMaterial, { opacity: 0, duration: 0.4 }),
@@ -325,7 +470,8 @@ async function planetToSurface() {
 	if (t.lengthSq() < 1e-4) t.set(1, 0, 0).addScaledVector(n, -n.x);
 	t.normalize();
 	const r = new THREE.Vector3().crossVectors(t, n).normalize();
-	surfaceFrame = { eye: site.clone().addScaledVector(n, SURFACE_HEIGHT), n, t, r };
+	const axis = new THREE.Vector3(0, 1, 0).applyQuaternion(planet.quaternion);
+	surfaceFrame = { eye: site.clone().addScaledVector(n, SURFACE_HEIGHT), n, t, r, axis };
 	look.yaw = 0;
 	look.pitch = THREE.MathUtils.degToRad(4);
 	buildSky();
@@ -385,17 +531,21 @@ const normal = new THREE.Vector3();
 const forward = new THREE.Vector3();
 
 function updateOverlay() {
-	if (!binding) return;
 	const w = window.innerWidth;
 	const h = window.innerHeight;
+
+	// Eye button over the faraway planet, on pages reached through a star.
+	if (awayEye) {
+		const showAwayEye = view === 'distant' && !busy;
+		awayEye.classList.toggle('is-hidden', !showAwayEye);
+		if (showAwayEye) placeOver(awayEye, planet.position, w, h);
+	}
+	if (!binding) return;
 
 	// Eye button sits on the planet in orbit view, while the hero is on screen.
 	const showEye = view === 'orbit' && !busy && window.scrollY < 80;
 	binding.eye.classList.toggle('is-hidden', !showEye);
-	if (showEye) {
-		const [x, y] = toScreen(tmp.copy(planet.position), w, h);
-		binding.eye.style.transform = `translate3d(${clamp(x, 40, w - 40)}px, ${clamp(y, 40, h - 40)}px, 0) translate(-50%, -50%)`;
-	}
+	if (showEye) placeOver(binding.eye, planet.position, w, h);
 	if (view === 'orbit' && !busy) return;
 
 	// Planet cards: pinned above their markers, larger the closer they are to the camera.
@@ -592,7 +742,7 @@ function applyPose(pose: Pose) {
 }
 
 /** Fly the camera to a pose. fovBump widens the lens mid-flight for a sense of speed. */
-function flyTo(to: Pose, duration: number, fovBump = 0): Promise<void> {
+function flyTo(to: Pose, duration: number, fovBump = 0, ease = 'power2.inOut'): Promise<void> {
 	const from: Pose = { pos: camera.position.clone(), quat: camera.quaternion.clone(), fov: camera.fov };
 	const progress = { t: 0 };
 	const apply = () => {
@@ -602,7 +752,7 @@ function flyTo(to: Pose, duration: number, fovBump = 0): Promise<void> {
 		camera.fov = THREE.MathUtils.lerp(from.fov, to.fov, t) + Math.sin(Math.PI * t) * fovBump;
 		camera.updateProjectionMatrix();
 	};
-	return tween(progress, { t: 1, duration, ease: 'power2.inOut', onUpdate: apply }).then(apply);
+	return tween(progress, { t: 1, duration, ease, onUpdate: apply }).then(apply);
 }
 
 function resize() {
@@ -631,6 +781,12 @@ function tween(target: object, vars: gsap.TweenVars): Promise<void> {
 		});
 		activeTweens.add(t);
 	});
+}
+
+/** Center an element on a point in the scene, kept a little inside the viewport. */
+function placeOver(el: HTMLElement, point: THREE.Vector3, w: number, h: number) {
+	const [x, y] = toScreen(tmp.copy(point), w, h);
+	el.style.transform = `translate3d(${clamp(x, 40, w - 40)}px, ${clamp(y, 40, h - 40)}px, 0) translate(-50%, -50%)`;
 }
 
 function toScreen(v: THREE.Vector3, w: number, h: number): [number, number] {
