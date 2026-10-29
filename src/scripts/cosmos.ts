@@ -57,6 +57,16 @@ const STAR_DRIFT_SPEED: Record<View, number> = {
 	distant: 0,
 };
 
+// Idle planet spin (radians per second) in the default background.
+const ORBIT_SPIN_X = 0.05;
+const ORBIT_SPIN_Y = 0.07;
+
+// The background resumes from its last saved state on a new page load if the
+// visitor was on the site within this window; after that it starts fresh.
+const RESUME_WINDOW_MS = 30 * 60 * 1000;
+const SAVE_KEY = 'cosmos-state';
+const STAR_SEED = 20261029;
+
 // Idle planet spin (radians per second) behind pages reached by a trip.
 // Inside the planet the walls move around you, so keep that one slow; 0 stops it.
 const INSIDE_SPIN_SPEED = 0.01;
@@ -152,12 +162,17 @@ export function initCosmos(canvas: HTMLCanvasElement) {
 	camera.position.z = 5;
 	glowTexture = makeGlowTexture();
 
-	// Stars, in a thick shell so none end up right next to the camera when it flies in
+	// Stars, in a thick shell so none end up right next to the camera when it flies in.
+	// Seeded, so every page load gets the same sky.
 	const STAR_COUNT = 1800;
 	const positions = new Float32Array(STAR_COUNT * 3);
+	const random = seededRandom(STAR_SEED);
 	const star = new THREE.Vector3();
 	for (let i = 0; i < STAR_COUNT; i++) {
-		star.randomDirection().multiplyScalar(THREE.MathUtils.randFloat(16, 34));
+		const z = random() * 2 - 1;
+		const phi = random() * Math.PI * 2;
+		const ring = Math.sqrt(1 - z * z);
+		star.set(Math.cos(phi) * ring, z, Math.sin(phi) * ring).multiplyScalar(16 + random() * 18);
 		star.toArray(positions, i * 3);
 	}
 	const starGeometry = new THREE.BufferGeometry();
@@ -195,6 +210,13 @@ export function initCosmos(canvas: HTMLCanvasElement) {
 
 	planet.position.copy(orbitPlanetPosition());
 	scene.add(planet);
+
+	// Pick up where the last page load left off, and save on the way out.
+	restoreState();
+	window.addEventListener('pagehide', saveState);
+	document.addEventListener('visibilitychange', () => {
+		if (document.visibilityState === 'hidden') saveState();
+	});
 
 	window.addEventListener('pointermove', (e) => {
 		pointer.x = e.clientX / window.innerWidth - 0.5;
@@ -309,6 +331,12 @@ export function reset() {
 		} else {
 			void settleFarAway();
 		}
+		return;
+	}
+	if (view === 'orbit' && !busy) {
+		// Already the default background: leave the camera where the mouse
+		// parallax has it, or it snaps to center and glides back (a visible jerk).
+		unbindHome();
 		return;
 	}
 	for (const tween of activeTweens) tween.kill();
@@ -510,8 +538,8 @@ async function surfaceToPlanet() {
 
 function updateOrbit(dt: number) {
 	if (!reduceMotion) {
-		planet.rotateX(dt * 0.05);
-		planet.rotateY(dt * 0.07);
+		planet.rotateX(dt * ORBIT_SPIN_X);
+		planet.rotateY(dt * ORBIT_SPIN_Y);
 	}
 	camera.position.x += (pointer.x * 0.6 - camera.position.x) * 0.03;
 	camera.position.y += (-pointer.y * 0.6 - camera.position.y) * 0.03;
@@ -766,7 +794,58 @@ function resize() {
 }
 
 // ---------------------------------------------------------------------------
+// Continuity across page loads
+
+interface SavedState {
+	savedAt: number;
+	stars: number[]; // quaternion
+	planet: number[]; // quaternion
+}
+
+function saveState() {
+	const state: SavedState = { savedAt: Date.now(), stars: stars.quaternion.toArray(), planet: planet.quaternion.toArray() };
+	try {
+		localStorage.setItem(SAVE_KEY, JSON.stringify(state));
+	} catch {
+		// Storage can be unavailable (private mode, blocked); the background just starts fresh.
+	}
+}
+
+/** Restore the saved orientation, then advance it by the time since it was saved. */
+function restoreState() {
+	let saved: SavedState | null = null;
+	try {
+		saved = JSON.parse(localStorage.getItem(SAVE_KEY) ?? 'null');
+	} catch {
+		return;
+	}
+	if (!saved || saved.stars?.length !== 4 || saved.planet?.length !== 4) return;
+	const elapsed = (Date.now() - saved.savedAt) / 1000;
+	if (!(elapsed >= 0) || elapsed * 1000 > RESUME_WINDOW_MS) return;
+
+	stars.quaternion.fromArray(saved.stars);
+	planet.quaternion.fromArray(saved.planet);
+	if (reduceMotion) return;
+	stars.rotation.y += elapsed * STAR_DRIFT_SPEED.orbit;
+	stars.rotation.x += elapsed * STAR_DRIFT_SPEED.orbit * 0.4;
+	planet.rotateX(elapsed * ORBIT_SPIN_X);
+	planet.rotateY(elapsed * ORBIT_SPIN_Y);
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
+
+/** Small deterministic PRNG (mulberry32), returning numbers in [0, 1). */
+function seededRandom(seed: number): () => number {
+	let a = seed >>> 0;
+	return () => {
+		a = (a + 0x6d2b79f5) >>> 0;
+		let t = a;
+		t = Math.imul(t ^ (t >>> 15), t | 1);
+		t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+		return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+	};
+}
 
 function tween(target: object, vars: gsap.TweenVars): Promise<void> {
 	return new Promise((resolve) => {

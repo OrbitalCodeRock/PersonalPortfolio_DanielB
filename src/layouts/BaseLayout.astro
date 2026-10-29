@@ -33,7 +33,8 @@ const path = Astro.url.pathname;
 	<body>
 		<Starfield />
 		{path !== '/' && <AwayEye />}
-		<header class="site-header container">
+		<!-- Its own transition layer, so it stays above the live background layer (see global.css). -->
+		<header class="site-header container" transition:name="site-header">
 			<a class="logo" href="/">DB</a>
 			<nav aria-label="Main">
 				{

@@ -78,6 +78,23 @@ body[data-view='surface'] .home-content {
 	pointer-events: none;
 }
 
+/*
+ * Page transitions normally freeze everything into snapshots, which made the
+ * background stop and then jump. The starfield canvas gets its own transition
+ * layer instead: the browser shows a layer's new state live, so the background
+ * keeps animating underneath while the page content slides in on top of it.
+ */
+#starfield {
+	view-transition-name: starfield;
+}
+::view-transition-group(starfield),
+::view-transition-new(starfield) {
+	animation: none;
+}
+::view-transition-old(starfield) {
+	display: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
 	*,
 	*::before,
