@@ -2,6 +2,7 @@
 // Home page overlay for the planet views in src/scripts/cosmos.ts:
 // the eye button, planet cards, the star name tip, and controls.
 import type { Section } from '../data/sections';
+import { places } from '../data/places';
 import PlanetEye from './PlanetEye.astro';
 
 interface Props {
@@ -21,18 +22,6 @@ const { items } = Astro.props;
 				<span class="back-planet">Back to home</span>
 				<span class="back-surface">Back to the planet</span>
 			</button>
-			<button
-				class="back-btn locate-btn"
-				type="button"
-				aria-label="Show the sky from my location"
-				title="Show the sky from my location"
-				data-locate
-			>
-				<svg viewBox="0 0 24 24" aria-hidden="true">
-					<path d="M12 21s-6.5-6.2-6.5-11.2a6.5 6.5 0 0 1 13 0C18.5 14.8 12 21 12 21z"></path>
-					<circle cx="12" cy="9.8" r="2.4"></circle>
-				</svg>
-			</button>
 			<p class="hint hint-planet">Drag to spin the planet. Pick a card to land there.</p>
 		</div>
 
@@ -50,23 +39,89 @@ const { items } = Astro.props;
 		<div class="star-tip" data-star-tip aria-hidden="true"></div>
 		<div class="zoom-readout" data-zoom-readout aria-hidden="true"></div>
 
-		<!-- Time controls for the sky view: run time faster, slower, backward, or pause. -->
+		<!--
+			Time controls for the sky view: scrub through the day, type or pick a date and
+			time, and run time faster, slower, backward, or pause.
+		-->
 		<div class="time-bar" role="group" aria-label="Sky time">
-			<button class="time-btn" type="button" aria-label="Faster backward" title="Faster backward" data-time-back>
-				<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 6 3 12l8 6zM21 6l-8 6 8 6z"></path></svg>
-			</button>
-			<button class="time-btn" type="button" aria-label="Pause" title="Pause" data-time-pause>
-				<svg viewBox="0 0 24 24" aria-hidden="true" data-icon-pause><path d="M7 5h3v14H7zM14 5h3v14h-3z"></path></svg>
-				<svg viewBox="0 0 24 24" aria-hidden="true" data-icon-play hidden><path d="M8 5v14l11-7z"></path></svg>
-			</button>
-			<button class="time-btn" type="button" aria-label="Faster forward" title="Faster forward" data-time-forward>
-				<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 6l8 6-8 6zM3 6l8 6-8 6z"></path></svg>
-			</button>
-			<div class="time-readout" aria-live="off">
-				<span class="time-date" data-time-date></span>
-				<span class="time-speed" data-time-speed></span>
+			<input
+				class="time-slider"
+				type="range"
+				min="0"
+				max="1439"
+				step="1"
+				aria-label="Time of day"
+				title="Time of day"
+				data-time-slider
+			/>
+			<div class="time-row">
+				<button class="time-btn" type="button" aria-label="Faster backward" title="Faster backward" data-time-back>
+					<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 6 3 12l8 6zM21 6l-8 6 8 6z"></path></svg>
+				</button>
+				<button class="time-btn" type="button" aria-label="Pause" title="Pause" data-time-pause>
+					<svg viewBox="0 0 24 24" aria-hidden="true" data-icon-pause><path d="M7 5h3v14H7zM14 5h3v14h-3z"></path></svg>
+					<svg viewBox="0 0 24 24" aria-hidden="true" data-icon-play hidden><path d="M8 5v14l11-7z"></path></svg>
+				</button>
+				<button class="time-btn" type="button" aria-label="Faster forward" title="Faster forward" data-time-forward>
+					<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 6l8 6-8 6zM3 6l8 6-8 6z"></path></svg>
+				</button>
+				<div class="time-readout">
+					<div class="time-when">
+						<input
+							class="time-date"
+							type="datetime-local"
+							aria-label="Date and time"
+							title="Pick a date and time"
+							data-time-date
+						/>
+						<button
+							class="place-btn"
+							type="button"
+							aria-haspopup="true"
+							aria-expanded="false"
+							aria-label="Choose a location"
+							title="Choose a location"
+							data-place-button
+						>
+							<svg viewBox="0 0 24 24" aria-hidden="true">
+								<path d="M12 21s-6.5-6.2-6.5-11.2a6.5 6.5 0 0 1 13 0C18.5 14.8 12 21 12 21z"></path>
+								<circle cx="12" cy="9.8" r="2.4"></circle>
+							</svg>
+						</button>
+					</div>
+					<span class="time-speed" data-time-speed></span>
+				</div>
+				<button class="time-btn time-now" type="button" title="Back to the present" data-time-now>Now</button>
 			</div>
-			<button class="time-btn time-now" type="button" title="Back to the present" data-time-now>Now</button>
+
+			<!-- Where the sky is seen from: your own location, a preset place, or coordinates. -->
+			<div class="place-menu" role="dialog" aria-label="Choose a location" data-place-menu hidden>
+				<p class="place-current">Viewing from <strong data-place-current></strong></p>
+				<button class="place-option place-mine" type="button" data-place-mine>Use my location</button>
+				<p class="place-error" data-place-error hidden>Couldn't get your location.</p>
+				<ul class="place-list">
+					{
+						places.map((p) => (
+							<li>
+								<button class="place-option" type="button" data-place={p.name} data-lat={p.lat} data-lon={p.lon}>
+									{p.name}
+								</button>
+							</li>
+						))
+					}
+				</ul>
+				<form class="place-custom" data-place-custom>
+					<label>
+						Latitude
+						<input type="number" name="lat" min="-90" max="90" step="any" placeholder="42.07" required />
+					</label>
+					<label>
+						Longitude
+						<input type="number" name="lon" min="-180" max="180" step="any" placeholder="-87.79" required />
+					</label>
+					<button class="place-option place-go" type="submit">Go</button>
+				</form>
+			</div>
 		</div>
 	</div>
 </div>
@@ -133,36 +188,12 @@ const { items } = Astro.props;
 		font-size: 0.9rem;
 	}
 	.back-surface,
-	.locate-btn,
 	:global(body[data-view='surface']) .back-planet,
 	:global(body[data-view='surface']) .hint-planet {
 		display: none;
 	}
 	:global(body[data-view='surface']) .back-surface {
 		display: inline;
-	}
-	:global(body[data-view='surface']) .locate-btn:not([hidden]) {
-		display: inline-flex;
-	}
-	/* Round, icon-only button beside Back. */
-	.locate-btn {
-		width: 38px;
-		height: 38px;
-		padding: 0;
-		align-items: center;
-		justify-content: center;
-	}
-	.locate-btn svg {
-		width: 18px;
-		height: 18px;
-		fill: none;
-		stroke: currentColor;
-		stroke-width: 1.8;
-		stroke-linejoin: round;
-	}
-	.locate-btn:disabled {
-		opacity: 0.5;
-		cursor: progress;
 	}
 
 	.planet-cards {
@@ -272,13 +303,24 @@ const { items } = Astro.props;
 		bottom: 18px;
 		z-index: 201;
 		display: none;
-		align-items: center;
-		gap: 4px;
-		padding: 5px;
+		flex-direction: column;
+		gap: 2px;
+		padding: 8px 6px 5px;
 		border: 1px solid var(--border);
-		border-radius: 999px;
+		border-radius: 18px;
 		background: rgba(5, 7, 15, 0.75);
 		transform: translateX(-50%);
+	}
+	.time-row {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+	}
+	.time-slider {
+		width: calc(100% - 16px);
+		margin: 0 8px;
+		accent-color: var(--accent);
+		cursor: pointer;
 	}
 	:global(body[data-view='surface']) .time-bar {
 		display: flex;
@@ -323,30 +365,181 @@ const { items } = Astro.props;
 		flex-direction: column;
 		align-items: center;
 		min-width: 150px;
-		padding: 0 8px;
+		padding: 0 4px;
 		line-height: 1.2;
-		pointer-events: none;
 	}
+	/* The date and time: reads like text, opens the browser's date picker when clicked. */
 	.time-date {
+		padding: 1px 4px;
+		border: 1px solid transparent;
+		border-radius: 6px;
+		background: none;
 		color: var(--text);
+		font: inherit;
 		font-size: 0.78rem;
 		font-variant-numeric: tabular-nums;
-		white-space: nowrap;
+		text-align: center;
+		cursor: pointer;
+		transition: border-color 0.2s;
+	}
+	.time-date:hover,
+	.time-date:focus-visible {
+		border-color: var(--border-strong);
+		outline: none;
+	}
+	.time-when {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+	}
+
+	/* Location: a pin button beside the date, opening a menu above the time bar. */
+	.place-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 26px;
+		height: 26px;
+		padding: 0;
+		border: 1px solid transparent;
+		border-radius: 6px;
+		background: none;
+		color: var(--text);
+		cursor: pointer;
+		transition: border-color 0.2s;
+	}
+	.place-btn:hover,
+	.place-btn:focus-visible,
+	.place-btn[aria-expanded='true'] {
+		border-color: var(--border-strong);
+		outline: none;
+	}
+	.place-btn svg {
+		width: 15px;
+		height: 15px;
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 1.8;
+		stroke-linejoin: round;
+	}
+	.place-menu {
+		position: absolute;
+		right: 0;
+		bottom: calc(100% + 8px);
+		width: 270px;
+		max-height: min(60vh, 440px);
+		overflow-y: auto;
+		padding: 10px;
+		border: 1px solid var(--border);
+		border-radius: 12px;
+		background: rgba(10, 16, 34, 0.96);
+		box-shadow: 0 10px 40px -12px rgba(0, 0, 0, 0.8);
+		font-size: 0.85rem;
+	}
+	.place-menu[hidden] {
+		display: none;
+	}
+	.place-current {
+		margin: 0 4px 8px;
+		color: var(--text-muted);
+	}
+	.place-current strong {
+		color: var(--text);
+		font-weight: 500;
+	}
+	.place-list {
+		list-style: none;
+		margin: 6px 0;
+		padding: 6px 0;
+		border-top: 1px solid var(--border);
+		border-bottom: 1px solid var(--border);
+	}
+	.place-option {
+		width: 100%;
+		padding: 6px 8px;
+		border: 1px solid transparent;
+		border-radius: 8px;
+		background: none;
+		color: var(--text);
+		font: inherit;
+		text-align: left;
+		cursor: pointer;
+	}
+	.place-option:hover,
+	.place-option:focus-visible {
+		border-color: var(--border-strong);
+		outline: none;
+	}
+	.place-option[aria-current='true'] {
+		color: var(--accent);
+	}
+	.place-option:disabled {
+		opacity: 0.5;
+		cursor: progress;
+	}
+	.place-mine {
+		color: var(--accent);
+	}
+	.place-error {
+		margin: 2px 8px 4px;
+		color: #ffb4a8;
+		font-size: 0.8rem;
+	}
+	.place-custom {
+		display: grid;
+		grid-template-columns: 1fr 1fr auto;
+		align-items: end;
+		gap: 6px;
+		padding: 2px 4px 0;
+	}
+	.place-custom label {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		color: var(--text-muted);
+		font-size: 0.75rem;
+	}
+	.place-custom input {
+		width: 100%;
+		padding: 4px 6px;
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		background: rgba(5, 7, 15, 0.8);
+		color: var(--text);
+		font: inherit;
+		font-size: 0.8rem;
+	}
+	.place-go {
+		width: auto;
+		padding: 5px 10px;
+		border-color: var(--border-strong);
+		text-align: center;
 	}
 	.time-speed {
 		color: var(--text-muted);
 		font-size: 0.7rem;
 		white-space: nowrap;
 	}
-	/* Leave room for the magnification readout on narrow screens. */
+	/* Narrow screens: the bar spans the width, and the magnification readout sits above it. */
 	@media (max-width: 560px) {
 		.time-bar {
-			left: auto;
-			right: 12px;
+			left: 8px;
+			right: 8px;
 			transform: none;
+		}
+		.time-row {
+			justify-content: space-between;
 		}
 		.time-readout {
 			min-width: 0;
+		}
+		.zoom-readout {
+			bottom: 112px;
+		}
+		.place-menu {
+			left: 0;
+			right: 0;
+			width: auto;
 		}
 	}
 
@@ -358,17 +551,19 @@ const { items } = Astro.props;
 
 <script>
 	import { navigate } from 'astro:transitions/client';
-	import { changeSpeed, clockState, resetClock, skyNow, togglePause } from '../scripts/sky';
 	import {
-		bindHome,
-		diveToCard,
-		getSkyInfo,
-		getView,
-		isBusy,
-		setView,
-		useVisitorLocation,
-		type View,
-	} from '../scripts/cosmos';
+		changeSpeed,
+		clockState,
+		getObserver,
+		requestLocation,
+		resetClock,
+		setObserver,
+		setSkyTime,
+		skyNow,
+		togglePause,
+		type Observer,
+	} from '../scripts/sky';
+	import { bindHome, diveToCard, getView, isBusy, refreshSky, setView, type View } from '../scripts/cosmos';
 
 	let pageAbort: AbortController | null = null;
 
@@ -394,26 +589,88 @@ const { items } = Astro.props;
 			stage.inert = target === 'orbit';
 			planetCards.inert = target !== 'planet';
 			const arrived = setView(target);
-			// The sky is chosen as soon as the landing starts.
-			if (target === 'surface') updateLocate();
+			if (target === 'surface') showPlace();
+			else closePlaceMenu();
 			await arrived;
 			if (target !== 'orbit') root.querySelector<HTMLElement>('[data-back]')!.focus({ preventScroll: true });
 		};
 
-		// Location button: hidden once the sky already shows the visitor's location.
-		const locate = root.querySelector<HTMLButtonElement>('[data-locate]')!;
-		const updateLocate = () => {
-			locate.hidden = getSkyInfo()?.place === 'your location';
+		// Location menu (the pin beside the date): your location, a preset place, or coordinates.
+		const placeButton = root.querySelector<HTMLButtonElement>('[data-place-button]')!;
+		const placeMenu = root.querySelector<HTMLElement>('[data-place-menu]')!;
+		const placeCurrent = root.querySelector<HTMLElement>('[data-place-current]')!;
+		const placeError = root.querySelector<HTMLElement>('[data-place-error]')!;
+		const placeMine = root.querySelector<HTMLButtonElement>('[data-place-mine]')!;
+		const placeOptions = [...root.querySelectorAll<HTMLButtonElement>('[data-place]')];
+		const placeName = (obs: Observer) => (obs.place === 'your location' ? 'Your location' : obs.place);
+		const showPlace = () => {
+			const obs = getObserver();
+			placeCurrent.textContent = placeName(obs);
+			placeButton.title = `Viewing from ${placeName(obs)}. Choose a location`;
+			for (const option of placeOptions) option.setAttribute('aria-current', String(option.dataset.place === obs.place));
 		};
-		locate.addEventListener(
+		const openPlaceMenu = () => {
+			showPlace();
+			placeError.hidden = true;
+			placeMenu.hidden = false;
+			placeButton.setAttribute('aria-expanded', 'true');
+		};
+		const closePlaceMenu = () => {
+			placeMenu.hidden = true;
+			placeButton.setAttribute('aria-expanded', 'false');
+		};
+		/** Show the sky from the current observer, then close the menu. */
+		const applyPlace = () => {
+			refreshSky();
+			showPlace();
+			closePlaceMenu();
+		};
+		const choose = (obs: Observer) => {
+			setObserver(obs);
+			applyPlace();
+		};
+		placeButton.addEventListener('click', () => (placeMenu.hidden ? openPlaceMenu() : closePlaceMenu()), { signal });
+		for (const option of placeOptions) {
+			option.addEventListener(
+				'click',
+				() => choose({ lat: Number(option.dataset.lat), lon: Number(option.dataset.lon), place: option.dataset.place! }),
+				{ signal },
+			);
+		}
+		placeMine.addEventListener(
 			'click',
 			async () => {
-				locate.disabled = true;
-				if (await useVisitorLocation()) updateLocate();
-				locate.disabled = false;
+				placeMine.disabled = true;
+				placeError.hidden = true;
+				if (await requestLocation()) applyPlace();
+				else placeError.hidden = false;
+				placeMine.disabled = false;
 			},
 			{ signal },
 		);
+		root.querySelector<HTMLFormElement>('[data-place-custom]')!.addEventListener(
+			'submit',
+			(e) => {
+				e.preventDefault();
+				const form = new FormData(e.currentTarget as HTMLFormElement);
+				const lat = Number(form.get('lat'));
+				const lon = Number(form.get('lon'));
+				if (!(Math.abs(lat) <= 90 && Math.abs(lon) <= 180)) return; // the inputs' own limits flag it
+				const label = `${Math.abs(lat).toFixed(2)}° ${lat >= 0 ? 'N' : 'S'}, ${Math.abs(lon).toFixed(2)}° ${lon >= 0 ? 'E' : 'W'}`;
+				choose({ lat, lon, place: label });
+			},
+			{ signal },
+		);
+		// Close the menu on a press anywhere else.
+		document.addEventListener(
+			'pointerdown',
+			(e) => {
+				const target = e.target as Node;
+				if (!placeMenu.hidden && !placeMenu.contains(target) && !placeButton.contains(target)) closePlaceMenu();
+			},
+			{ signal },
+		);
+
 		const back = () => go(getView() === 'surface' ? 'planet' : 'orbit');
 
 		// Fly to the clicked card, then load the page right where the camera ends up.
@@ -430,14 +687,22 @@ const { items } = Astro.props;
 		cards.forEach((card, i) => card.addEventListener('click', (e) => travel(e, () => diveToCard(i)), { signal }));
 
 		// Time controls: the sky view's clock lives in sky.ts; cosmos.ts reads it every frame.
-		const timeDate = root.querySelector<HTMLElement>('[data-time-date]')!;
+		const timeDate = root.querySelector<HTMLInputElement>('[data-time-date]')!;
+		const timeSlider = root.querySelector<HTMLInputElement>('[data-time-slider]')!;
 		const timeSpeed = root.querySelector<HTMLElement>('[data-time-speed]')!;
 		const pauseButton = root.querySelector<HTMLButtonElement>('[data-time-pause]')!;
 		const nowButton = root.querySelector<HTMLButtonElement>('[data-time-now]')!;
-		const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+		// "YYYY-MM-DDTHH:MM" in local time, the format a datetime-local field uses.
+		const pad = (n: number) => String(n).padStart(2, '0');
+		const toFieldValue = (d: Date) =>
+			`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+		let scrubbing = false; // the slider is being dragged; don't move it from under the pointer
 		const showTime = () => {
 			const state = clockState();
-			timeDate.textContent = dateFormat.format(skyNow());
+			const now = skyNow();
+			// Leave the field alone while it's being edited.
+			if (document.activeElement !== timeDate) timeDate.value = toFieldValue(now);
+			if (!scrubbing) timeSlider.value = String(now.getHours() * 60 + now.getMinutes());
 			timeSpeed.textContent = state.paused ? 'Paused' : `${state.backward ? '◀' : '▶'} ${state.speed}`;
 			pauseButton.querySelector('[data-icon-pause]')!.toggleAttribute('hidden', state.paused);
 			pauseButton.querySelector('[data-icon-play]')!.toggleAttribute('hidden', !state.paused);
@@ -461,6 +726,45 @@ const { items } = Astro.props;
 				{ signal },
 			);
 		}
+		// Presses on the time bar (the slider especially) shouldn't also drag the sky, and
+		// the wheel over it (scrolling the location menu) shouldn't zoom the sky.
+		const timeBar = root.querySelector('.time-bar')!;
+		timeBar.addEventListener(
+			'pointerdown',
+			(e) => {
+				e.stopPropagation();
+				// That also hides the press from the location menu's "press anywhere else" check,
+				// so close it here for presses on the rest of the bar (the calendar, slider, buttons).
+				const target = e.target as Node;
+				if (!placeMenu.contains(target) && !placeButton.contains(target)) closePlaceMenu();
+			},
+			{ signal },
+		);
+		timeBar.addEventListener('wheel', (e) => e.stopPropagation(), { signal });
+		// Opening the date picker from the keyboard closes the location menu too.
+		timeDate.addEventListener('focus', closePlaceMenu, { signal });
+		// Slider: scrub through the time of day (local midnight to midnight) on the date shown.
+		timeSlider.addEventListener(
+			'input',
+			() => {
+				const day = skyNow();
+				setSkyTime(new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, Number(timeSlider.value)).getTime());
+				showTime();
+			},
+			{ signal },
+		);
+		timeSlider.addEventListener('pointerdown', () => (scrubbing = true), { signal });
+		window.addEventListener('pointerup', () => (scrubbing = false), { signal });
+		// Date and time field: jump to whatever was typed or picked.
+		timeDate.addEventListener(
+			'change',
+			() => {
+				const picked = new Date(timeDate.value); // a datetime-local value is read as local time
+				if (!Number.isNaN(picked.getTime())) setSkyTime(picked.getTime());
+				showTime();
+			},
+			{ signal },
+		);
 		const timeTicker = setInterval(() => {
 			if (getView() === 'surface') showTime();
 		}, 250);
@@ -473,7 +777,12 @@ const { items } = Astro.props;
 		document.addEventListener(
 			'keydown',
 			(e) => {
-				if (e.key === 'Escape' && getView() !== 'orbit') back();
+				if (e.key !== 'Escape') return;
+				// Close the location menu first, rather than leaving the sky view.
+				if (!placeMenu.hidden) {
+					closePlaceMenu();
+					placeButton.focus();
+				} else if (getView() !== 'orbit') back();
 			},
 			{ signal },
 		);

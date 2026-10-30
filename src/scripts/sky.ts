@@ -48,6 +48,11 @@ export function getObserver(): Observer {
 	return observer;
 }
 
+/** View the sky from somewhere else (a preset place or typed coordinates). */
+export function setObserver(next: Observer) {
+	observer = next;
+}
+
 /** Use the visitor's location if the browser already allows it; never prompts. */
 export async function useLocationIfAllowed(): Promise<boolean> {
 	try {
@@ -190,6 +195,12 @@ export function changeSpeed(step: 1 | -1) {
 export function togglePause() {
 	rebase();
 	paused = !paused;
+}
+
+/** Jump to a moment (ms since 1970), keeping the current speed and pause state. */
+export function setSkyTime(ms: number) {
+	clockSim = ms;
+	clockReal = Date.now();
 }
 
 /** Back to the present, at real-time speed. */

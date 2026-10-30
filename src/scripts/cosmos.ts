@@ -14,7 +14,6 @@ import {
 	chooseSky,
 	equatorialVector,
 	getObserver,
-	requestLocation,
 	siderealAngle,
 	skyNow,
 	useLocationIfAllowed,
@@ -1237,11 +1236,11 @@ export function getSkyInfo(): SkyInfo | null {
 }
 
 /**
- * Sky view: ask for the visitor's location (the browser prompts), then redraw
- * their sky and turn to face its constellation. Resolves null if declined.
+ * Sky view: redraw the sky for the current observer (after picking a new place,
+ * see sky.ts) and turn to face its best placed constellation.
  */
-export async function useVisitorLocation(): Promise<SkyInfo | null> {
-	if (!(await requestLocation()) || view !== 'surface' || busy || !surfaceFrame) return null;
+export function refreshSky(): SkyInfo | null {
+	if (view !== 'surface' || busy || !surfaceFrame) return null;
 	// buildSky sets a new zoom target; the frame loop eases toward it.
 	const aim = buildSky();
 	// Turn the short way round (the frame loop eases toward it).
