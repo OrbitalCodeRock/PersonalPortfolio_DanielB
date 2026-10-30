@@ -1,12 +1,13 @@
-// Where the Moon and the naked-eye planets are, seen from Earth's center, at a
-// given moment. Uses Paul Schlyter's simplified orbital elements ("How to compute
+// Where the Moon and the planets are, seen from Earth's center, at a given
+// moment. Uses Paul Schlyter's simplified orbital elements ("How to compute
 // planetary positions"), including the largest perturbations for the Moon,
-// Jupiter and Saturn: good to a few arcminutes, far finer than the sky view shows.
+// Jupiter, Saturn and Uranus: good to a few arcminutes, far finer than the sky
+// view shows. Also turns any heliocentric position (a comet's) into RA/Dec.
 //
 // Coordinates: ecliptic x/y/z (x toward the vernal equinox, z toward the
 // ecliptic north pole) for the orbit math, then converted to equatorial RA/Dec.
 
-export type BodyName = 'Moon' | 'Mercury' | 'Venus' | 'Mars' | 'Jupiter' | 'Saturn';
+export type BodyName = 'Moon' | 'Mercury' | 'Venus' | 'Mars' | 'Jupiter' | 'Saturn' | 'Uranus' | 'Neptune';
 
 export interface BodyEphemeris {
 	name: BodyName;
@@ -20,7 +21,7 @@ export interface BodyEphemeris {
 	sunward: { ra: number; dec: number }; // direction from the body toward the Sun
 }
 
-type Vec3 = [number, number, number];
+export type Vec3 = [number, number, number];
 
 const RAD = Math.PI / 180;
 const EARTH_RADII_PER_AU = 23454.8;
@@ -33,6 +34,8 @@ const DIAMETER_AT_1AU: Record<Exclude<BodyName, 'Moon'>, number> = {
 	Mars: 9.36,
 	Jupiter: 196.94,
 	Saturn: 165.6,
+	Uranus: 65.8,
+	Neptune: 62.2,
 };
 
 const sind = (x: number) => Math.sin(x * RAD);
@@ -58,6 +61,8 @@ function orbits(d: number): Record<BodyName | 'Sun', Orbit> {
 		Mars: { N: 49.5574 + 2.11081e-5 * d, i: 1.8497 - 1.78e-8 * d, w: 286.5016 + 2.92961e-5 * d, a: 1.523688, e: 0.093405 + 2.516e-9 * d, M: 18.6021 + 0.5240207766 * d },
 		Jupiter: { N: 100.4542 + 2.76854e-5 * d, i: 1.303 - 1.557e-7 * d, w: 273.8777 + 1.64505e-5 * d, a: 5.20256, e: 0.048498 + 4.469e-9 * d, M: 19.895 + 0.0830853001 * d },
 		Saturn: { N: 113.6634 + 2.3898e-5 * d, i: 2.4886 - 1.081e-7 * d, w: 339.3939 + 2.97661e-5 * d, a: 9.55475, e: 0.055546 - 9.499e-9 * d, M: 316.967 + 0.0334442282 * d },
+		Uranus: { N: 74.0005 + 1.3978e-5 * d, i: 0.7733 + 1.9e-8 * d, w: 96.6612 + 3.0565e-5 * d, a: 19.18171 - 1.55e-8 * d, e: 0.047318 + 7.45e-9 * d, M: 142.5905 + 0.011725806 * d },
+		Neptune: { N: 131.7806 + 3.0173e-5 * d, i: 1.77 - 2.55e-7 * d, w: 272.8461 - 6.027e-6 * d, a: 30.05826 + 3.313e-8 * d, e: 0.008606 + 2.15e-9 * d, M: 260.2471 + 0.005995147 * d },
 	};
 }
 
@@ -104,15 +109,54 @@ const len = (a: Vec3) => Math.hypot(...a);
 const angleBetween = (a: Vec3, b: Vec3) =>
 	Math.acos(Math.min(1, Math.max(-1, (a[0] * b[0] + a[1] * b[1] + a[2] * b[2]) / (len(a) * len(b))))) / RAD;
 
-/** Geocentric positions of the Sun, the Moon and the five naked-eye planets at a moment. */
+/** Days since 1999 Dec 31, 0h UT: the day number Schlyter's elements use. */
+function dayNumber(date: Date): number {
+	return date.getTime() / 86400000 + 2440587.5 - 2451543.5;
+}
+
+/** The Sun seen from Earth's center (ecliptic, AU) at day d. */
+function sunGeocentric(d: number): Vec3 {
+	// Its orbit elements describe Earth's orbit seen backwards.
+	const o = orbits(d).Sun;
+	const sun = orbitPosition(o);
+	return [sun.r * cosd(sun.v + o.w), sun.r * sind(sun.v + o.w), 0];
+}
+
+/**
+ * A heliocentric ecliptic position (AU), such as a comet's, seen from Earth's
+ * center: RA (hours), Dec (degrees), distance from Earth and from the Sun (AU),
+ * and the direction from it straight away from the Sun (where a comet's tail points).
+ */
+export function fromEarth(helio: Vec3, date: Date) {
+	const d = dayNumber(date);
+	const obliquity = 23.4393 - 3.563e-7 * d;
+	const sunGeo = sunGeocentric(d);
+	const geo: Vec3 = [helio[0] + sunGeo[0], helio[1] + sunGeo[1], helio[2] + sunGeo[2]];
+	return {
+		...toRaDec(geo, obliquity),
+		distance: len(geo),
+		sunDistance: len(helio),
+		/** Where a point `ahead` AU further out from the Sun appears (for drawing tails). */
+		outward: (ahead: number) => {
+			const r = len(helio);
+			const k = 1 + ahead / r;
+			return toRaDec([helio[0] * k + sunGeo[0], helio[1] * k + sunGeo[1], helio[2] * k + sunGeo[2]], obliquity);
+		},
+	};
+}
+
+/** Where the Sun is (RA hours, Dec degrees): cheaper than solarSystem when that's all that's needed. */
+export function sunRaDec(date: Date): { ra: number; dec: number } {
+	const d = dayNumber(date);
+	return toRaDec(sunGeocentric(d), 23.4393 - 3.563e-7 * d);
+}
+
+/** Geocentric positions of the Sun, the Moon and the planets at a moment. */
 export function solarSystem(date: Date): { sun: { ra: number; dec: number }; bodies: BodyEphemeris[] } {
-	const d = date.getTime() / 86400000 + 2440587.5 - 2451543.5;
+	const d = dayNumber(date);
 	const obliquity = 23.4393 - 3.563e-7 * d;
 	const o = orbits(d);
-
-	// The Sun, seen from Earth (its orbit elements describe Earth's orbit seen backwards).
-	const sun = orbitPosition(o.Sun);
-	const sunGeo: Vec3 = [sun.r * cosd(sun.v + o.Sun.w), sun.r * sind(sun.v + o.Sun.w), 0];
+	const sunGeo = sunGeocentric(d);
 
 	const bodies: BodyEphemeris[] = [];
 	const add = (name: BodyName, geo: Vec3, magnitudeAt: (r: number, R: number, phase: number) => number, radius: number) => {
@@ -169,6 +213,7 @@ export function solarSystem(date: Date): { sun: { ra: number; dec: number }; bod
 	// Planets: heliocentric orbit + the Sun's geocentric position = geocentric.
 	const Mj = rev(o.Jupiter.M);
 	const Msat = rev(o.Saturn.M);
+	const Mu = rev(o.Uranus.M);
 	const perturbations: Partial<Record<BodyName, [number, number]>> = {
 		Jupiter: [
 			-0.332 * sind(2 * Mj - 5 * Msat - 67.6) -
@@ -188,6 +233,7 @@ export function solarSystem(date: Date): { sun: { ra: number; dec: number }; bod
 				0.014 * sind(Mj - 3 * Msat + 32),
 			-0.02 * cosd(2 * Mj - 4 * Msat - 2) + 0.018 * sind(2 * Mj - 6 * Msat - 49),
 		],
+		Uranus: [0.04 * sind(Msat - 2 * Mu + 6) + 0.035 * sind(Msat - 3 * Mu + 33) - 0.015 * sind(Mj - Mu + 20), 0],
 	};
 	// Magnitude formulas: H + 5·log10(r·R) + phase terms (r from the Sun, R from Earth, AU).
 	const magnitudes: Record<Exclude<BodyName, 'Moon'>, (phase: number) => number> = {
@@ -196,8 +242,10 @@ export function solarSystem(date: Date): { sun: { ra: number; dec: number }; bod
 		Mars: (p) => -1.51 + 0.016 * p,
 		Jupiter: (p) => -9.25 + 0.014 * p,
 		Saturn: (p) => -9.0 + 0.044 * p,
+		Uranus: (p) => -7.15 + 0.001 * p,
+		Neptune: (p) => -6.9 + 0.001 * p,
 	};
-	for (const name of ['Mercury', 'Venus', 'Mars', 'Jupiter', 'Saturn'] as const) {
+	for (const name of ['Mercury', 'Venus', 'Mars', 'Jupiter', 'Saturn', 'Uranus', 'Neptune'] as const) {
 		let helio = orbitPosition(o[name]).pos;
 		const p = perturbations[name];
 		if (p) helio = perturb(helio, p[0], p[1]);

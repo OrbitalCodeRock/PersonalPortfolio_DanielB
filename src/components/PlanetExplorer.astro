@@ -4,6 +4,7 @@
 import type { Section } from '../data/sections';
 import { places } from '../data/places';
 import PlanetEye from './PlanetEye.astro';
+import SkyFinder from './SkyFinder.astro';
 
 interface Props {
 	items: Section[];
@@ -37,6 +38,8 @@ const { items } = Astro.props;
 		</div>
 
 		<div class="star-tip" data-star-tip aria-hidden="true"></div>
+		<SkyFinder />
+
 		<div class="zoom-readout" data-zoom-box>
 			<span aria-hidden="true" data-zoom-readout></span>
 			<button class="zoom-out" type="button" title="Zoom back out to the naked eye" data-zoom-out>Zoom out</button>
@@ -77,6 +80,19 @@ const { items } = Astro.props;
 							title="Pick a date and time"
 							data-time-date
 						/>
+					</div>
+					<!-- How fast time runs, the time zone every sky time is in, and where the sky is seen from. -->
+					<div class="time-sub">
+						<span class="time-speed" data-time-speed></span>
+						<button
+							class="zone-btn"
+							type="button"
+							aria-haspopup="true"
+							aria-expanded="false"
+							aria-label="Choose a time zone"
+							title="Time zone"
+							data-zone-button
+						></button>
 						<button
 							class="place-btn"
 							type="button"
@@ -92,9 +108,24 @@ const { items } = Astro.props;
 							</svg>
 						</button>
 					</div>
-					<span class="time-speed" data-time-speed></span>
 				</div>
 				<button class="time-btn time-now" type="button" title="Back to the present" data-time-now>Now</button>
+			</div>
+
+			<!-- The time zone every sky time is shown in (and typed or picked in). -->
+			<div class="place-menu" role="dialog" aria-label="Choose a time zone" data-zone-menu hidden>
+				<p class="place-current">Times are in <strong data-zone-current></strong></p>
+				<button class="place-option" type="button" data-zone="location">
+					Location's time <span class="zone-note" data-zone-location></span>
+				</button>
+				<button class="place-option" type="button" data-zone="device">
+					This device <span class="zone-note" data-zone-device></span>
+				</button>
+				<button class="place-option" type="button" data-zone="UTC">UTC <span class="zone-note">· Universal Time</span></button>
+				<label class="zone-other">
+					Another zone
+					<select data-zone-select></select>
+				</label>
 			</div>
 
 			<!-- Where the sky is seen from: your own location, a preset place, or coordinates. -->
@@ -106,7 +137,14 @@ const { items } = Astro.props;
 					{
 						places.map((p) => (
 							<li>
-								<button class="place-option" type="button" data-place={p.name} data-lat={p.lat} data-lon={p.lon}>
+								<button
+									class="place-option"
+									type="button"
+									data-place={p.name}
+									data-lat={p.lat}
+									data-lon={p.lon}
+									data-tz={p.timeZone}
+								>
 									{p.name}
 								</button>
 							</li>
@@ -424,13 +462,13 @@ const { items } = Astro.props;
 		gap: 2px;
 	}
 
-	/* Location: a pin button beside the date, opening a menu above the time bar. */
+	/* Location: a pin button under the date, opening a menu above the time bar. */
 	.place-btn {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 26px;
-		height: 26px;
+		width: 22px;
+		height: 18px;
 		padding: 0;
 		border: 1px solid transparent;
 		border-radius: 6px;
@@ -446,12 +484,54 @@ const { items } = Astro.props;
 		outline: none;
 	}
 	.place-btn svg {
-		width: 15px;
-		height: 15px;
+		width: 13px;
+		height: 13px;
 		fill: none;
 		stroke: currentColor;
 		stroke-width: 1.8;
 		stroke-linejoin: round;
+	}
+	/* Time zone: the zone's short name beside the date, opening its own menu. */
+	.zone-btn {
+		height: 18px;
+		padding: 0 5px;
+		border: 1px solid transparent;
+		border-radius: 6px;
+		background: none;
+		color: var(--text-muted);
+		font: inherit;
+		font-size: 0.66rem;
+		line-height: 1;
+		white-space: nowrap;
+		cursor: pointer;
+		transition: border-color 0.2s;
+	}
+	.zone-btn:hover,
+	.zone-btn:focus-visible,
+	.zone-btn[aria-expanded='true'] {
+		border-color: var(--border-strong);
+		color: var(--text);
+		outline: none;
+	}
+	.zone-note {
+		color: var(--text-muted);
+		font-size: 0.78rem;
+	}
+	.zone-other {
+		display: grid;
+		gap: 4px;
+		margin: 8px 8px 2px;
+		padding-top: 8px;
+		border-top: 1px solid var(--border);
+		color: var(--text-muted);
+	}
+	.zone-other select {
+		padding: 5px 6px;
+		border: 1px solid var(--border-strong);
+		border-radius: 6px;
+		background: rgba(5, 7, 15, 0.9);
+		color: var(--text);
+		font: inherit;
 	}
 	.place-menu {
 		position: absolute;
@@ -555,6 +635,11 @@ const { items } = Astro.props;
 		border-color: var(--border-strong);
 		text-align: center;
 	}
+	.time-sub {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+	}
 	.time-speed {
 		color: var(--text-muted);
 		font-size: 0.7rem;
@@ -572,6 +657,10 @@ const { items } = Astro.props;
 		}
 		.time-readout {
 			min-width: 0;
+		}
+		.time-date {
+			padding: 1px 0;
+			font-size: 0.72rem;
 		}
 		.zoom-readout {
 			bottom: 112px;
@@ -604,6 +693,18 @@ const { items } = Astro.props;
 		type Observer,
 	} from '../scripts/sky';
 	import { bindHome, diveToCard, getView, isBusy, refreshSky, setView, zoomOutSky, type View } from '../scripts/cosmos';
+	import {
+		allZones,
+		deviceZone,
+		fromZoned,
+		getZoneSetting,
+		locationZone,
+		onZoneChange,
+		setZoneSetting,
+		skyZone,
+		zoneAbbreviation,
+		zonedParts,
+	} from '../scripts/skyTime';
 
 	let pageAbort: AbortController | null = null;
 
@@ -665,6 +766,7 @@ const { items } = Astro.props;
 			refreshSky();
 			showPlace();
 			closePlaceMenu();
+			showZone(); // the location's time zone may have changed
 		};
 		const choose = (obs: Observer) => {
 			setObserver(obs);
@@ -674,7 +776,13 @@ const { items } = Astro.props;
 		for (const option of placeOptions) {
 			option.addEventListener(
 				'click',
-				() => choose({ lat: Number(option.dataset.lat), lon: Number(option.dataset.lon), place: option.dataset.place! }),
+				() =>
+					choose({
+						lat: Number(option.dataset.lat),
+						lon: Number(option.dataset.lon),
+						place: option.dataset.place!,
+						timeZone: option.dataset.tz,
+					}),
 				{ signal },
 			);
 		}
@@ -708,9 +816,65 @@ const { items } = Astro.props;
 			(e) => {
 				const target = e.target as Node;
 				if (!placeMenu.hidden && !placeMenu.contains(target) && !placeButton.contains(target)) closePlaceMenu();
+				if (!zoneMenu.hidden && !zoneMenu.contains(target) && !zoneButton.contains(target)) closeZoneMenu();
 			},
 			{ signal },
 		);
+
+		// Time zone menu (the zone's name beside the date): the location's, this device's, UTC, or any.
+		const zoneButton = root.querySelector<HTMLButtonElement>('[data-zone-button]')!;
+		const zoneMenu = root.querySelector<HTMLElement>('[data-zone-menu]')!;
+		const zoneCurrent = root.querySelector<HTMLElement>('[data-zone-current]')!;
+		const zoneOptions = [...root.querySelectorAll<HTMLButtonElement>('[data-zone]')];
+		const zoneSelect = root.querySelector<HTMLSelectElement>('[data-zone-select]')!;
+		zoneSelect.replaceChildren(
+			Object.assign(document.createElement('option'), { value: '', textContent: 'Pick a zone…' }),
+			...allZones().map((zone) => Object.assign(document.createElement('option'), { value: zone, textContent: zone.replace(/_/g, ' ') })),
+		);
+		/** "Australia/Sydney (AEDT)" */
+		const zoneName = (zone: string) => `${zone.replace(/_/g, ' ')} (${zoneAbbreviation(skyNow(), zone)})`;
+		function showZone() {
+			const setting = getZoneSetting();
+			const zone = skyZone();
+			const here = locationZone(getObserver());
+			zoneButton.textContent = zoneAbbreviation(skyNow(), zone);
+			zoneButton.title = `Times are in ${zoneName(zone)}. Choose a time zone`;
+			zoneCurrent.textContent = zoneName(zone);
+			zoneMenu.querySelector('[data-zone-location]')!.textContent = here.estimated
+				? `· ${zoneAbbreviation(skyNow(), here.zone)}, estimated from longitude`
+				: `· ${zoneName(here.zone)}`;
+			zoneMenu.querySelector('[data-zone-device]')!.textContent = `· ${zoneName(deviceZone())}`;
+			for (const option of zoneOptions) option.setAttribute('aria-current', String(option.dataset.zone === setting));
+			const other = setting !== 'location' && setting !== 'device' && setting !== 'UTC';
+			zoneSelect.value = other ? setting : '';
+		}
+		const closeZoneMenu = () => {
+			zoneMenu.hidden = true;
+			zoneButton.setAttribute('aria-expanded', 'false');
+		};
+		zoneButton.addEventListener(
+			'click',
+			() => {
+				if (!zoneMenu.hidden) return closeZoneMenu();
+				closePlaceMenu();
+				showZone();
+				zoneMenu.hidden = false;
+				zoneButton.setAttribute('aria-expanded', 'true');
+			},
+			{ signal },
+		);
+		placeButton.addEventListener('click', closeZoneMenu, { signal });
+		for (const option of zoneOptions) {
+			option.addEventListener('click', () => (setZoneSetting(option.dataset.zone!), closeZoneMenu()), { signal });
+		}
+		zoneSelect.addEventListener('change', () => zoneSelect.value && (setZoneSetting(zoneSelect.value), closeZoneMenu()), {
+			signal,
+		});
+		const stopZoneUpdates = onZoneChange(() => {
+			showZone();
+			showTime();
+		});
+		signal.addEventListener('abort', stopZoneUpdates);
 
 		const back = () => go(getView() === 'surface' ? 'planet' : 'orbit');
 
@@ -733,17 +897,23 @@ const { items } = Astro.props;
 		const timeSpeed = root.querySelector<HTMLElement>('[data-time-speed]')!;
 		const pauseButton = root.querySelector<HTMLButtonElement>('[data-time-pause]')!;
 		const nowButton = root.querySelector<HTMLButtonElement>('[data-time-now]')!;
-		// "YYYY-MM-DDTHH:MM" in local time, the format a datetime-local field uses.
+		// "YYYY-MM-DDTHH:MM" in the sky's time zone (skyTime.ts), the format a datetime-local field uses.
 		const pad = (n: number) => String(n).padStart(2, '0');
-		const toFieldValue = (d: Date) =>
-			`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+		const toFieldValue = (d: Date) => {
+			const p = zonedParts(d);
+			return `${String(p.year).padStart(4, '0')}-${pad(p.month)}-${pad(p.day)}T${pad(p.hour)}:${pad(p.minute)}`;
+		};
 		let scrubbing = false; // the slider is being dragged; don't move it from under the pointer
 		const showTime = () => {
 			const state = clockState();
 			const now = skyNow();
 			// Leave the field alone while it's being edited.
 			if (document.activeElement !== timeDate) timeDate.value = toFieldValue(now);
-			if (!scrubbing) timeSlider.value = String(now.getHours() * 60 + now.getMinutes());
+			const clock = zonedParts(now);
+			// The zone's short name can change with the date (daylight saving time).
+			const abbreviation = zoneAbbreviation(now);
+			if (zoneButton.textContent !== abbreviation) zoneButton.textContent = abbreviation;
+			if (!scrubbing) timeSlider.value = String(clock.hour * 60 + clock.minute);
 			timeSpeed.textContent = state.paused ? 'Paused' : `${state.backward ? '◀' : '▶'} ${state.speed}`;
 			pauseButton.querySelector('[data-icon-pause]')!.toggleAttribute('hidden', state.paused);
 			pauseButton.querySelector('[data-icon-play]')!.toggleAttribute('hidden', !state.paused);
@@ -778,6 +948,7 @@ const { items } = Astro.props;
 				// so close it here for presses on the rest of the bar (the calendar, slider, buttons).
 				const target = e.target as Node;
 				if (!placeMenu.contains(target) && !placeButton.contains(target)) closePlaceMenu();
+				if (!zoneMenu.contains(target) && !zoneButton.contains(target)) closeZoneMenu();
 			},
 			{ signal },
 		);
@@ -787,12 +958,12 @@ const { items } = Astro.props;
 		root.querySelector('[data-zoom-out]')!.addEventListener('click', zoomOutSky, { signal });
 		// Opening the date picker from the keyboard closes the location menu too.
 		timeDate.addEventListener('focus', closePlaceMenu, { signal });
-		// Slider: scrub through the time of day (local midnight to midnight) on the date shown.
+		// Slider: scrub through the time of day (midnight to midnight in the sky's zone) on the date shown.
 		timeSlider.addEventListener(
 			'input',
 			() => {
-				const day = skyNow();
-				setSkyTime(new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, Number(timeSlider.value)).getTime());
+				const day = zonedParts(skyNow());
+				setSkyTime(fromZoned(day.year, day.month, day.day, 0, Number(timeSlider.value)).getTime());
 				showTime();
 			},
 			{ signal },
@@ -803,8 +974,12 @@ const { items } = Astro.props;
 		timeDate.addEventListener(
 			'change',
 			() => {
-				const picked = new Date(timeDate.value); // a datetime-local value is read as local time
-				if (!Number.isNaN(picked.getTime())) setSkyTime(picked.getTime());
+				// A datetime-local value, read as a time in the sky's zone.
+				const match = /^(\d{4,})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(timeDate.value);
+				if (match) {
+					const [year, month, day, hour, minute] = match.slice(1).map(Number);
+					setSkyTime(fromZoned(year, month, day, hour, minute).getTime());
+				}
 				showTime();
 			},
 			{ signal },
@@ -814,6 +989,7 @@ const { items } = Astro.props;
 		}, 250);
 		signal.addEventListener('abort', () => clearInterval(timeTicker));
 		showTime();
+		showZone();
 
 		bindHome({ eye, stage, cards, starTip, zoomBox, zoomReadout, onEgg: () => go('surface') });
 		eye.addEventListener('click', () => go('planet'), { signal });
@@ -822,10 +998,13 @@ const { items } = Astro.props;
 			'keydown',
 			(e) => {
 				if (e.key !== 'Escape') return;
-				// Close the location menu first, rather than leaving the sky view.
+				// Close the location or time zone menu first, rather than leaving the sky view.
 				if (!placeMenu.hidden) {
 					closePlaceMenu();
 					placeButton.focus();
+				} else if (!zoneMenu.hidden) {
+					closeZoneMenu();
+					zoneButton.focus();
 				} else if (getView() !== 'orbit') back();
 			},
 			{ signal },

@@ -4,15 +4,20 @@
 // and its full license terms.
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { deepSky } from '../data/deepSky';
-import { deepSkyImages, planetMaps, type ImageCredit } from '../data/skyImages';
+import { comets } from '../data/comets';
+import { cometImages, deepSkyImages, planetMaps, type ImageCredit } from '../data/skyImages';
 
 const planets = Object.entries(planetMaps).map(([name, credit]) => ({ name, credit }));
 const deep = deepSky
 	.filter((o) => deepSkyImages[o.catalog])
 	.map((o) => ({ name: `${o.name} (${o.catalog})`, credit: deepSkyImages[o.catalog] as ImageCredit }));
+const cometRows = comets
+	.filter((c) => cometImages[c.id])
+	.map((c) => ({ name: `${c.name} (${c.designation})`, credit: cometImages[c.id] }));
 const sections = [
 	{ title: 'Moon and planets', intro: 'Surface maps wrapped onto the globes once they are big enough on screen.', rows: planets },
 	{ title: 'Galaxies, nebulae and star clusters', intro: 'Photos shown in place of the drawn images when you zoom in.', rows: deep },
+	{ title: 'Comets', intro: "Photos laid along a comet's drawn tail when you zoom in on it.", rows: cometRows },
 ];
 ---
 
@@ -21,8 +26,8 @@ const sections = [
 	<p class="intro">
 		The sky view swaps in real images as you zoom in. They come from Wikimedia Commons, NASA, ESA, ESO and
 		astrophotographers who share their work under open licenses. Each was resized and recompressed for the web;
-		follow the source link for the original and its full license. The close-up star images and the drawn
-		galaxies and nebulae are made in code.
+		follow the source link for the original and its full license. The close-up star images, the drawn
+		galaxies, nebulae and comet tails, and the meteors are made in code.
 	</p>
 
 	{

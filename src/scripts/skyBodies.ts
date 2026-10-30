@@ -40,8 +40,10 @@ const SPIN_HOURS: Record<BodyName, number> = {
 	Mars: 24.62,
 	Jupiter: 9.925,
 	Saturn: 10.656,
+	Uranus: -17.24,
+	Neptune: 16.11,
 };
-const FLATTENING: Partial<Record<BodyName, number>> = { Jupiter: 0.065, Saturn: 0.098 };
+const FLATTENING: Partial<Record<BodyName, number>> = { Jupiter: 0.065, Saturn: 0.098, Uranus: 0.023, Neptune: 0.017 };
 
 const NOISE = /* glsl */ `
 	float hash(vec3 p) {
@@ -104,10 +106,22 @@ const SURFACES: Record<BodyName, string> = {
 		vec3 col = mix(vec3(0.8, 0.68, 0.46), vec3(0.93, 0.84, 0.62), smoothstep(-0.3, 0.4, band));
 		return mix(col, vec3(0.7, 0.72, 0.7), smoothstep(0.8, 0.97, abs(p.y)));
 	`,
+	Uranus: /* glsl */ `
+		// A nearly featureless pale cyan haze, a little brighter toward the poles.
+		return vec3(0.68, 0.88, 0.9) * (0.94 + 0.08 * abs(p.y) + 0.03 * fbm(vec3(p.x * 2.0, p.y * 9.0, p.z * 2.0)));
+	`,
+	Neptune: /* glsl */ `
+		// Deep blue with faint bands and a dark storm, like Voyager 2's Great Dark Spot.
+		float lat = asin(clamp(p.y, -1.0, 1.0));
+		float band = sin(lat * 10.0 + fbm(vec3(p.x * 3.0, p.y * 10.0, p.z * 3.0)) * 1.2);
+		vec3 col = mix(vec3(0.24, 0.4, 0.82), vec3(0.36, 0.52, 0.92), smoothstep(-0.4, 0.6, band));
+		float spot = 1.0 - smoothstep(0.08, 0.12, length(vec2(atan(p.z, p.x) * cos(lat) - 0.6, (lat + 0.35) * 2.0)));
+		return mix(col, vec3(0.14, 0.24, 0.55), spot);
+	`,
 };
 
 function bodyMaterial(name: BodyName): THREE.ShaderMaterial {
-	const gasGiant = name === 'Jupiter' || name === 'Saturn';
+	const gasGiant = name === 'Jupiter' || name === 'Saturn' || name === 'Uranus' || name === 'Neptune';
 	return new THREE.ShaderMaterial({
 		transparent: true,
 		uniforms: {

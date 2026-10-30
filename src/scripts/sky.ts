@@ -18,6 +18,7 @@ export interface Observer {
 	lat: number; // latitude in degrees, north positive
 	lon: number; // longitude in degrees, east positive (so the Americas are negative)
 	place: string; // shown in the sky view's caption
+	timeZone?: string; // IANA time zone, when known (skyTime.ts estimates one otherwise)
 }
 
 /** A catalog star plus where it currently is in the observer's sky. */
@@ -39,7 +40,7 @@ export interface SkyChoice {
 	place: string; // the observer's place name
 }
 
-export const GLENVIEW: Observer = { lat: 42.0698, lon: -87.7878, place: 'Glenview, Illinois' };
+export const GLENVIEW: Observer = { lat: 42.0698, lon: -87.7878, place: 'Glenview, Illinois', timeZone: 'America/Chicago' };
 
 // The current observer: Glenview until the visitor's location is known.
 let observer: Observer = GLENVIEW;
@@ -77,7 +78,9 @@ function locate(): Promise<boolean> {
 		navigator.geolocation.getCurrentPosition(
 			// pos.coords holds latitude/longitude in degrees, the same convention as Observer.
 			(pos) => {
-				observer = { lat: pos.coords.latitude, lon: pos.coords.longitude, place: 'your location' };
+				// The visitor is there, so this device's time zone is the place's.
+				const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+				observer = { lat: pos.coords.latitude, lon: pos.coords.longitude, place: 'your location', timeZone };
 				resolve(true);
 			},
 			() => resolve(false), // declined, timed out, or no fix: keep the current observer
@@ -156,6 +159,8 @@ export const BODY_POLES: Record<BodyName, [number, number]> = {
 	Mars: [317.68, 52.89],
 	Jupiter: [268.06, 64.5],
 	Saturn: [40.59, 83.54],
+	Uranus: [257.31, -15.18],
+	Neptune: [299.36, 43.46],
 };
 
 // ---------------------------------------------------------------------------

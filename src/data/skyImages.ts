@@ -1,7 +1,7 @@
 // Real images for the sky view, loaded only when the telescope zooms in (see cosmos.ts).
 // Downloaded from Wikimedia Commons, resized; each entry keeps its author, license and
 // source page for the credits. Planet maps are Solar System Scope textures (CC BY 4.0).
-// Deep-sky keys are the catalog designations in deepSky.ts.
+// Deep-sky keys are the catalog designations in deepSky.ts; comet keys are the ids in comets.ts.
 
 export interface ImageCredit {
 	artist: string;
@@ -45,6 +45,18 @@ export const planetMaps: Record<string, ImageCredit & { map: string }> = {
 		"artist": "Solar System Scope",
 		"license": "CC BY 4.0",
 		"source": "https://commons.wikimedia.org/wiki/File:Solarsystemscope_texture_2k_saturn.jpg"
+	},
+	"Uranus": {
+		"map": "/sky/planets/uranus.jpg",
+		"artist": "Solar System Scope",
+		"license": "CC BY 4.0",
+		"source": "https://commons.wikimedia.org/wiki/File:Solarsystemscope_texture_2k_uranus.jpg"
+	},
+	"Neptune": {
+		"map": "/sky/planets/neptune.jpg",
+		"artist": "Solar System Scope",
+		"license": "CC BY 4.0",
+		"source": "https://commons.wikimedia.org/wiki/File:Solarsystemscope_texture_2k_neptune.jpg"
 	}
 };
 
@@ -258,5 +270,58 @@ export const deepSkyImages: Record<string, ImageCredit & { small: string; large:
 		"artist": "NASA, ESA, and the Hubble Heritage (STScI/AURA)-ESA/Hubble Collaboration Acknowledgment: J. Mack (STScI) and G. Piotto (University of Padova, Italy)",
 		"license": "CC BY 4.0",
 		"source": "https://commons.wikimedia.org/wiki/File:Heic1510a.tif"
+	}
+};
+
+// Comet photos, keyed by the ids in comets.ts; shown along the comet's tail when zoomed in.
+export const cometImages: Record<string, ImageCredit & { small: string; large: string }> = {
+	"halley": {
+		"small": "/sky/comets/halley-512.jpg",
+		"large": "/sky/comets/halley-1280.jpg",
+		"artist": "NASA/W. Liller",
+		"license": "Public domain",
+		"source": "https://commons.wikimedia.org/wiki/File:Lspn_comet_halley.jpg"
+	},
+	"hale-bopp": {
+		"small": "/sky/comets/hale-bopp-512.jpg",
+		"large": "/sky/comets/hale-bopp-1280.jpg",
+		"artist": "E. Kolmhofer, H. Raab; Johannes-Kepler-Observatory, Linz, Austria",
+		"license": "CC BY-SA 3.0",
+		"source": "https://commons.wikimedia.org/wiki/File:Comet_Hale-Bopp_1995O1.jpg"
+	},
+	"neowise": {
+		"small": "/sky/comets/neowise-512.jpg",
+		"large": "/sky/comets/neowise-1280.jpg",
+		"artist": "SimgDe",
+		"license": "CC BY-SA 4.0",
+		"source": "https://commons.wikimedia.org/wiki/File:Comet_2020_F3_(NEOWISE)_on_Jul_14_2020_aligned_to_stars.jpg"
+	},
+	"hyakutake": {
+		"small": "/sky/comets/hyakutake-512.jpg",
+		"large": "/sky/comets/hyakutake-1280.jpg",
+		"artist": "E. Kolmhofer, H. Raab; Johannes-Kepler-Observatory, Linz, Austria",
+		"license": "CC BY-SA 3.0",
+		"source": "https://commons.wikimedia.org/wiki/File:Hyakutake_Color.jpg"
+	},
+	"tsuchinshan-atlas": {
+		"small": "/sky/comets/tsuchinshan-atlas-512.jpg",
+		"large": "/sky/comets/tsuchinshan-atlas-1280.jpg",
+		"artist": "Jim Vajda",
+		"license": "CC BY 2.0",
+		"source": "https://commons.wikimedia.org/wiki/File:Comet_Tsuchinshan%E2%80%93ATLAS_over_Ohio_(Composite).jpg"
+	},
+	"pons-brooks": {
+		"small": "/sky/comets/pons-brooks-512.jpg",
+		"large": "/sky/comets/pons-brooks-1280.jpg",
+		"artist": "Taavi Niittee/Tõrva Astronoomiaklubi/Tõrva Astronomy Club",
+		"license": "CC0",
+		"source": "https://commons.wikimedia.org/wiki/File:Pons_brooks.jpg"
+	},
+	"encke": {
+		"small": "/sky/comets/encke-512.jpg",
+		"large": "/sky/comets/encke-1280.jpg",
+		"artist": "Jim Scotti",
+		"license": "Public domain",
+		"source": "https://commons.wikimedia.org/wiki/File:Comet_Encke.jpg"
 	}
 };

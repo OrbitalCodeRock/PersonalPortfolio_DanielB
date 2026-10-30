@@ -1,0 +1,589 @@
+---
+// Sky view search and compass (inside PlanetExplorer's stage). Search for a star,
+// constellation, galaxy, nebula, cluster, the Moon or a planet: each result says
+// whether it's in view at the current time and place, and when that changes.
+// Pick a result to lock the telescope onto it; pin it to show it on the compass.
+// Objects the simulation doesn't include say so. The search runs on the data
+// already loaded (src/scripts/skyFinder.ts); nothing is downloaded.
+const PX_PER_DEGREE = 2;
+// Compass tape: ticks every 15° from -180° to 540°, so ±90° around any heading is covered.
+const ticks = Array.from({ length: 49 }, (_, i) => -180 + i * 15);
+const POINTS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+const label = (deg: number) => {
+	const d = ((deg % 360) + 360) % 360;
+	return d % 45 === 0 ? POINTS[d / 45] : '';
+};
+---
+
+<div class="sky-finder" data-sky-finder data-px-per-degree={PX_PER_DEGREE}>
+	<div class="compass" data-compass>
+		<div class="compass-window">
+			<div class="compass-tape" data-compass-tape aria-hidden="true">
+				{
+					ticks.map((deg) => (
+						<span
+							class:list={['tick', { major: label(deg), north: label(deg) === 'N' }]}
+							style={`left: ${(deg + 180) * PX_PER_DEGREE}px`}
+						>
+							{label(deg) && <b>{label(deg)}</b>}
+						</span>
+					))
+				}
+			</div>
+			<div class="compass-pins" data-compass-pins></div>
+			<span class="compass-needle" aria-hidden="true"></span>
+		</div>
+		<span class="compass-heading" data-compass-heading aria-live="off"></span>
+	</div>
+
+	<div class="search" role="search">
+		<svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true">
+			<circle cx="10.5" cy="10.5" r="6.5"></circle>
+			<path d="m15.5 15.5 5 5"></path>
+		</svg>
+		<input
+			type="search"
+			placeholder="Search the sky"
+			autocomplete="off"
+			spellcheck="false"
+			aria-label="Search stars, planets and other objects"
+			aria-controls="sky-results"
+			aria-expanded="false"
+			data-sky-search
+		/>
+		<ul class="search-results" id="sky-results" data-sky-results hidden></ul>
+	</div>
+</div>
+
+<style>
+	.sky-finder {
+		display: none;
+	}
+	:global(body[data-view='surface']) .sky-finder {
+		display: contents;
+	}
+
+	/* Compass, top center: the headings in view, and pinned objects at their bearings. */
+	.compass {
+		position: absolute;
+		top: 18px;
+		left: 50%;
+		z-index: 201;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 2px;
+		width: 360px;
+		transform: translateX(-50%);
+	}
+	.compass-window {
+		position: relative;
+		width: 100%;
+		height: 46px;
+		overflow: hidden;
+		border: 1px solid var(--border);
+		border-radius: 10px;
+		background: rgba(5, 7, 15, 0.75);
+	}
+	.compass-tape {
+		position: absolute;
+		top: 0;
+		left: 0;
+		height: 24px;
+		will-change: transform;
+	}
+	/* Fade the tape out at both ends. */
+	.compass-window::before {
+		content: '';
+		position: absolute;
+		inset: 0 0 auto;
+		z-index: 1;
+		height: 24px;
+		background: linear-gradient(90deg, rgb(5, 7, 15), transparent 14%, transparent 86%, rgb(5, 7, 15));
+		pointer-events: none;
+	}
+	.tick {
+		position: absolute;
+		top: 0;
+		width: 0;
+		height: 24px;
+	}
+	.tick::before {
+		content: '';
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 1px;
+		height: 6px;
+		background: var(--text-muted);
+		opacity: 0.6;
+	}
+	.tick.major::before {
+		height: 9px;
+		background: var(--text);
+		opacity: 1;
+	}
+	.tick b {
+		position: absolute;
+		top: 10px;
+		left: 0;
+		color: var(--text);
+		font-size: 0.72rem;
+		font-weight: 500;
+		line-height: 1;
+		transform: translateX(-50%);
+	}
+	.tick.north::before {
+		background: #ff8a7a;
+	}
+	.tick.north b {
+		color: #ff8a7a;
+		font-weight: 700;
+	}
+	.compass-needle {
+		position: absolute;
+		top: 0;
+		left: 50%;
+		width: 2px;
+		height: 100%;
+		margin-left: -1px;
+		background: linear-gradient(var(--accent), transparent);
+		pointer-events: none;
+	}
+	.compass-pins {
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: 2px;
+		height: 18px;
+	}
+	.compass-pins :global(button) {
+		position: absolute;
+		top: 0;
+		max-width: 96px;
+		padding: 1px 5px;
+		overflow: hidden;
+		border: 1px solid var(--border-strong);
+		border-radius: 999px;
+		background: rgba(10, 16, 34, 0.9);
+		color: var(--accent);
+		font: inherit;
+		font-size: 0.66rem;
+		line-height: 1.3;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		cursor: pointer;
+		transform: translateX(-50%);
+	}
+	.compass-pins :global(button.is-below) {
+		border-color: var(--border);
+		color: var(--text-muted);
+		opacity: 0.75;
+	}
+	.compass-heading {
+		color: var(--text-muted);
+		font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+		font-size: 0.72rem;
+		letter-spacing: 0.05em;
+	}
+
+	/* Search, top right. */
+	.search {
+		position: absolute;
+		top: 20px;
+		right: 16px;
+		z-index: 202;
+		width: 260px;
+	}
+	.search-icon {
+		position: absolute;
+		top: 50%;
+		left: 12px;
+		width: 16px;
+		height: 16px;
+		margin-top: -8px;
+		fill: none;
+		stroke: var(--text-muted);
+		stroke-width: 2;
+		pointer-events: none;
+	}
+	.search input {
+		box-sizing: border-box;
+		width: 100%;
+		padding: 8px 14px 8px 36px;
+		border: 1px solid var(--border-strong);
+		border-radius: 999px;
+		background: rgba(10, 16, 34, 0.85);
+		color: var(--text);
+		font: inherit;
+		font-size: 0.9rem;
+	}
+	.search input:focus {
+		border-color: var(--accent);
+		outline: none;
+	}
+	.search-results {
+		position: absolute;
+		top: calc(100% + 6px);
+		right: 0;
+		width: min(360px, calc(100vw - 32px));
+		max-height: min(60vh, 460px);
+		margin: 0;
+		padding: 6px;
+		overflow-y: auto;
+		list-style: none;
+		border: 1px solid var(--border);
+		border-radius: 12px;
+		background: rgba(10, 16, 34, 0.96);
+		box-sizing: border-box;
+	}
+	.search-results[hidden] {
+		display: none;
+	}
+	.search-results :global(li) {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: flex-start;
+		gap: 6px;
+		border-radius: 8px;
+	}
+	.search-results :global(li:hover),
+	.search-results :global(li:focus-within) {
+		background: rgba(120, 160, 255, 0.08);
+	}
+	.search-results :global(.result) {
+		flex: 1 1 calc(100% - 80px);
+		min-width: 0;
+		padding: 7px 8px;
+		border: none;
+		background: none;
+		color: var(--text);
+		font: inherit;
+		text-align: left;
+		cursor: pointer;
+	}
+	.search-results :global(.result:disabled) {
+		cursor: default;
+	}
+	.search-results :global(.result strong) {
+		font-size: 0.92rem;
+	}
+	.search-results :global(.result .kind) {
+		margin-left: 6px;
+		color: var(--text-muted);
+		font-size: 0.75rem;
+	}
+	.search-results :global(.result .status) {
+		display: block;
+		margin-top: 2px;
+		color: var(--text-muted);
+		font-size: 0.76rem;
+	}
+	.search-results :global(.status.is-shown) {
+		color: #8fe0a8;
+	}
+	.search-results :global(.status.is-missing) {
+		color: #ffb4a8;
+	}
+	.search-results :global(.goto) {
+		margin: -2px 0 8px 8px;
+		padding: 3px 10px;
+		border: 1px solid var(--border-strong);
+		border-radius: 999px;
+		background: none;
+		color: var(--accent);
+		font: inherit;
+		font-size: 0.74rem;
+		cursor: pointer;
+	}
+	.search-results :global(.goto:hover) {
+		border-color: var(--accent);
+		background: rgba(111, 182, 255, 0.1);
+	}
+	.search-results :global(.pin) {
+		flex: none;
+		margin: 7px 6px 0 0;
+		padding: 3px 9px;
+		border: 1px solid var(--border);
+		border-radius: 999px;
+		background: none;
+		color: var(--text-muted);
+		font: inherit;
+		font-size: 0.72rem;
+		cursor: pointer;
+	}
+	.search-results :global(.pin:hover) {
+		border-color: var(--border-strong);
+		color: var(--text);
+	}
+	.search-results :global(.pin[aria-pressed='true']) {
+		border-color: var(--accent);
+		color: var(--accent);
+	}
+	.search-results :global(.empty) {
+		padding: 10px;
+		color: var(--text-muted);
+		font-size: 0.85rem;
+	}
+
+	@media (max-width: 760px) {
+		.search {
+			width: calc(100% - 220px);
+			min-width: 130px;
+		}
+		.compass {
+			top: 66px;
+			width: min(360px, calc(100% - 32px));
+		}
+	}
+</style>
+
+<script>
+	import { getSkyLook, lockOnto, lookToward } from '../scripts/cosmos';
+	import { getObserver, setSkyTime, skyNow } from '../scripts/sky';
+	import { compassPoint, entryAltAz, findEntry, searchSky, visibility, type FinderEntry } from '../scripts/skyFinder';
+	import { formatMoment } from '../scripts/skyTime';
+
+	const PINS_KEY = 'sky-pins';
+	let pageAbort: AbortController | null = null;
+
+	function loadPins(): string[] {
+		try {
+			const saved = JSON.parse(localStorage.getItem(PINS_KEY) ?? '[]');
+			return Array.isArray(saved) ? saved.filter((key) => typeof key === 'string' && findEntry(key)) : [];
+		} catch {
+			return []; // storage unavailable or corrupt: start with no pins
+		}
+	}
+
+	function savePins(pins: string[]) {
+		try {
+			localStorage.setItem(PINS_KEY, JSON.stringify(pins));
+		} catch {
+			// Pins just won't outlast the page.
+		}
+	}
+
+	/** Degrees from a to b the short way round, in -180..180. */
+	function turn(a: number, b: number): number {
+		return ((((b - a) % 360) + 540) % 360) - 180;
+	}
+
+	/**
+	 * Show an entry in the sky: lock onto it if it's on show, otherwise turn to face
+	 * where it is (or, below the horizon, the spot on the horizon it's under).
+	 */
+	function goTo(entry: FinderEntry): boolean {
+		const vis = visibility(entry, getObserver(), skyNow());
+		if (!vis) return false;
+		if (vis.shown && entry.key.startsWith('constellation:')) lookToward(vis.alt, vis.az, 60);
+		else if (!vis.shown || !lockOnto(entry.key)) lookToward(Math.max(vis.alt, 0.15), vis.az);
+		return vis.shown;
+	}
+
+	document.addEventListener('astro:page-load', () => {
+		pageAbort?.abort();
+		const root = document.querySelector<HTMLElement>('[data-sky-finder]');
+		if (!root) return;
+		pageAbort = new AbortController();
+		const { signal } = pageAbort;
+		const pxPerDegree = Number(root.dataset.pxPerDegree);
+
+		const input = root.querySelector<HTMLInputElement>('[data-sky-search]')!;
+		const results = root.querySelector<HTMLUListElement>('[data-sky-results]')!;
+		const tape = root.querySelector<HTMLElement>('[data-compass-tape]')!;
+		const pinsBox = root.querySelector<HTMLElement>('[data-compass-pins]')!;
+		const headingText = root.querySelector<HTMLElement>('[data-compass-heading]')!;
+		const compassWidth = () => pinsBox.clientWidth;
+		let pins = loadPins();
+
+		// Presses and the wheel over the search and compass are theirs, not the sky's.
+		for (const el of [root.querySelector('.search')!, root.querySelector('.compass')!]) {
+			el.addEventListener('pointerdown', (e) => e.stopPropagation(), { signal });
+			el.addEventListener('wheel', (e) => e.stopPropagation(), { signal });
+		}
+
+		// --- Search ---
+
+		const close = () => {
+			results.hidden = true;
+			input.setAttribute('aria-expanded', 'false');
+		};
+
+		const render = () => {
+			const query = input.value.trim();
+			if (!query) return close();
+			const found = searchSky(query);
+			const obs = getObserver();
+			const now = skyNow();
+			results.replaceChildren(
+				...found.map((entry) => {
+					const li = document.createElement('li');
+					const main = document.createElement('button');
+					main.type = 'button';
+					main.className = 'result';
+					const name = Object.assign(document.createElement('strong'), { textContent: entry.name });
+					const kind = Object.assign(document.createElement('span'), { className: 'kind', textContent: entry.kind });
+					const status = document.createElement('span');
+					const vis = visibility(entry, obs, now);
+					status.className = `status ${vis?.shown ? 'is-shown' : ''} ${entry.included ? '' : 'is-missing'}`;
+					status.textContent = vis ? vis.text : 'Not included in this simulation';
+					main.append(name, kind, status);
+					li.append(main);
+					if (!entry.included) {
+						main.disabled = true;
+						return li;
+					}
+					main.title = vis?.shown ? 'Lock the telescope onto it' : 'Face the direction it is in';
+					main.addEventListener('click', () => {
+						goTo(entry);
+						close();
+					});
+					const pin = document.createElement('button');
+					pin.type = 'button';
+					pin.className = 'pin';
+					const setPinned = () => {
+						const pinned = pins.includes(entry.key);
+						pin.textContent = pinned ? 'Pinned' : 'Pin';
+						pin.setAttribute('aria-pressed', String(pinned));
+						pin.title = pinned ? 'Remove from the compass' : 'Show on the compass';
+					};
+					setPinned();
+					pin.addEventListener('click', () => {
+						pins = pins.includes(entry.key) ? pins.filter((k) => k !== entry.key) : [...pins, entry.key];
+						savePins(pins);
+						setPinned();
+						renderPins();
+					});
+					li.append(pin);
+					// Not in view now: jump the clock to the next good chance to see it, and look.
+					if (vis?.goTo) {
+						const when = vis.goTo;
+						const jump = document.createElement('button');
+						jump.type = 'button';
+						jump.className = 'goto';
+						jump.textContent = `${vis.goToPast ? 'Go back to' : 'Go to'} ${formatMoment(when, now)}`;
+						jump.title = 'Set the sky to that date and time, and look at it';
+						jump.addEventListener('click', () => {
+							setSkyTime(when.getTime());
+							close();
+							// Give the sky a moment to catch up to the new time before locking on.
+							setTimeout(() => goTo(entry), 150);
+						});
+						li.append(jump);
+					}
+					return li;
+				}),
+			);
+			if (!found.length) {
+				const li = document.createElement('li');
+				li.className = 'empty';
+				li.textContent = `“${query}” isn't included in this simulation.`;
+				results.append(li);
+			}
+			results.hidden = false;
+			input.setAttribute('aria-expanded', 'true');
+		};
+
+		input.addEventListener('input', render, { signal });
+		input.addEventListener('focus', render, { signal });
+		input.addEventListener(
+			'keydown',
+			(e) => {
+				if (e.key === 'Escape') {
+					// Close the results (then clear the search) before Escape leaves the sky view.
+					e.stopPropagation();
+					if (!results.hidden) close();
+					else if (input.value) input.value = '';
+					else input.blur();
+				} else if (e.key === 'Enter') {
+					results.querySelector<HTMLButtonElement>('.result:not(:disabled)')?.click();
+				} else if (e.key === 'ArrowDown') {
+					e.preventDefault();
+					results.querySelector<HTMLButtonElement>('button')?.focus();
+				}
+			},
+			{ signal },
+		);
+		results.addEventListener(
+			'keydown',
+			(e) => {
+				if (e.key === 'Escape') {
+					e.stopPropagation();
+					close();
+					input.focus();
+				}
+			},
+			{ signal },
+		);
+		// Close when pressing anywhere outside the search.
+		document.addEventListener(
+			'pointerdown',
+			(e) => {
+				if (!root.querySelector('.search')!.contains(e.target as Node)) close();
+			},
+			{ signal },
+		);
+
+		// --- Compass ---
+
+		const pinButtons = new Map<string, HTMLButtonElement>();
+		function renderPins() {
+			for (const [key, button] of pinButtons) {
+				if (!pins.includes(key)) {
+					button.remove();
+					pinButtons.delete(key);
+				}
+			}
+			for (const key of pins) {
+				if (pinButtons.has(key)) continue;
+				const entry = findEntry(key);
+				if (!entry) continue;
+				const button = document.createElement('button');
+				button.type = 'button';
+				button.textContent = entry.name;
+				button.addEventListener('click', () => goTo(entry));
+				pinsBox.append(button);
+				pinButtons.set(key, button);
+			}
+		}
+		renderPins();
+
+		// Each frame: slide the tape to the heading and place the pins at their bearings.
+		let lastTitles = 0;
+		let frame = 0;
+		const update = () => {
+			frame = requestAnimationFrame(update);
+			const look = getSkyLook();
+			if (!look) return;
+			const heading = (look.heading * 180) / Math.PI;
+			const width = compassWidth();
+			tape.style.transform = `translateX(${width / 2 - (heading + 180) * pxPerDegree}px)`;
+			const text = `${compassPoint(look.heading)} ${Math.round(heading) % 360}°`;
+			if (headingText.textContent !== text) headingText.textContent = text;
+			const obs = getObserver();
+			const now = skyNow();
+			const refreshTitles = performance.now() - lastTitles > 1000;
+			if (refreshTitles) lastTitles = performance.now();
+			const half = width / 2 / pxPerDegree - 2; // degrees from center to (almost) the edge
+			for (const [key, button] of pinButtons) {
+				const entry = findEntry(key)!;
+				const place = entryAltAz(entry, obs, now);
+				if (!place) continue;
+				const offset = turn(heading, (place.az * 180) / Math.PI);
+				// Off the side of the compass: park at the edge with an arrow pointing the way.
+				const edge = Math.abs(offset) > half;
+				const shown = Math.max(-half, Math.min(half, offset));
+				button.style.left = `${width / 2 + shown * pxPerDegree}px`;
+				// Edge pins hang inward from the edge rather than centering on it.
+				button.style.transform = edge ? (offset < 0 ? 'none' : 'translateX(-100%)') : '';
+				const label = edge ? (offset < 0 ? `‹ ${entry.name}` : `${entry.name} ›`) : entry.name;
+				if (button.textContent !== label) button.textContent = label;
+				button.classList.toggle('is-below', place.alt <= 0);
+				if (refreshTitles) button.title = `${entry.name}: ${visibility(entry, obs, now)?.text ?? ''}`;
+			}
+		};
+		frame = requestAnimationFrame(update);
+		signal.addEventListener('abort', () => cancelAnimationFrame(frame));
+	});
+</script>

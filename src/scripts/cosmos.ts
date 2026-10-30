@@ -20,11 +20,17 @@ import {
 } from './sky';
 import { createBodyVisual, type BodyVisual } from './skyBodies';
 import { solarSystem, type BodyName } from './ephemeris';
-import { constellations } from '../data/constellations';
+import { constellations, looseStars, type SkyStar } from '../data/constellations';
 import { deepSky } from '../data/deepSky';
 import { deepSkyTexture } from './deepSkyArt';
 import { deepSkyImages, planetMaps, type ImageCredit } from '../data/skyImages';
-import { loadSkyImage } from './skyImageLoader';
+import { fitPhoto, loadSkyImage, photoMaterial } from './skyImageLoader';
+import { comets } from '../data/comets';
+import { cometState, COMET_LIMIT } from './comets';
+import { createCometVisual, type CometVisual } from './skyComets';
+import { cometImages } from '../data/skyImages';
+import { createMeteorShowers, METEOR_SPEEDUP, type MeteorShowers } from './skyMeteors';
+import { shortDate } from './meteors';
 
 // inside is the page background after diving into the planet (see reset()).
 export type View = 'orbit' | 'planet' | 'surface' | 'inside';
@@ -95,6 +101,8 @@ const PLANET_GLOW: Record<Exclude<BodyName, 'Moon'>, number> = {
 	Mars: 0xffa07a,
 	Jupiter: 0xffeed4,
 	Saturn: 0xffe6b8,
+	Uranus: 0xc8f0f2,
+	Neptune: 0xa8c0ff,
 };
 // How close (in pixels) the pointer must be to a star to show its name.
 const STAR_HOVER_RADIUS = 18;
@@ -167,11 +175,13 @@ let celestial: THREE.Group | null = null;
 // Everything in the sky view that shows a name on hover: stars, plus the planets
 // and Moon (which also have a size, and can be clicked to focus the telescope).
 interface SkyItem {
+	key: string; // "star:Polaris", "deep:M31", "body:Mars": how the search (skyFinder.ts) names it
 	name: string;
 	local: THREE.Vector3; // position on the celestial sphere (celestial group's frame)
 	angularRadius?: number; // radians; bodies only
 	hoverable: boolean; // up, and part of what's on show
 	detail?: string; // a second line under the name: a star's type, or an image credit while a real image shows
+	focusFov?: number; // field of view (degrees) to frame it when locking on, for things without a disk
 }
 
 /** A short credit line for the hover tip ("Image: NASA, ESA · Public domain"); the credits page has the full text. */
@@ -188,6 +198,12 @@ let skyConstellations: {
 	lines: THREE.LineBasicMaterial;
 	opacity: number;
 }[] = [];
+// Comets, placed from their orbits each frame; drawn only while bright enough to see.
+let skyComets: { item: SkyItem; visual: CometVisual; comet: (typeof comets)[number] }[] = [];
+// Meteor showers: radiants and falling meteors while each shower is active.
+let skyMeteors: { showers: MeteorShowers; items: SkyItem[] } | null = null;
+// Famous stars without a stick figure (looseStars), each shown whenever it's up.
+let skyLoose: { items: SkyItem[]; stars: THREE.ShaderMaterial } | null = null;
 // The planets and Moon: their visuals, and a point of light for when the disk is too small to see.
 let skyBodies: {
 	name: BodyName;
@@ -736,14 +752,18 @@ function bodyAt(x: number, y: number): SkyItem | null {
 	camera.getWorldDirection(forward);
 	let best: SkyItem | null = null;
 	let bestDistance = Infinity;
-	const stars = skyConstellations.flatMap((c) => c.items);
-	for (const item of [...skyBodies.map((b) => b.item), ...skyDeep.map((d) => d.item), ...stars]) {
+	for (const item of skyItems) {
 		if (!item.hoverable) continue;
 		const world = worldOf(item);
 		if (tmp.copy(world).sub(camera.position).dot(forward) <= 0) continue; // behind the camera
 		const [sx, sy] = toScreen(world, w, h);
 		const distance = Math.hypot(sx - x, sy - y);
-		const reach = item.angularRadius ? Math.max(BODY_PICK_RADIUS, item.angularRadius * pxPerRadian) : STAR_HOVER_RADIUS;
+		// Bodies and comets get a generous margin; stars a tighter one.
+		const reach = item.angularRadius
+			? Math.max(BODY_PICK_RADIUS, item.angularRadius * pxPerRadian)
+			: item.focusFov
+				? BODY_PICK_RADIUS
+				: STAR_HOVER_RADIUS;
 		if (distance < reach && distance < bestDistance) {
 			best = item;
 			bestDistance = distance;
@@ -841,13 +861,44 @@ function focusOn(item: SkyItem) {
 	autoZoomOut = false;
 	aimAt(item);
 	// Fill about a third of the view's height; a star (a point) gets its close-up.
-	const fov = item.angularRadius ? THREE.MathUtils.radToDeg(item.angularRadius * 2) * 3 : STAR_FOCUS_FOV;
+	const fov = item.focusFov ?? (item.angularRadius ? THREE.MathUtils.radToDeg(item.angularRadius * 2) * 3 : STAR_FOCUS_FOV);
 	skyZoom.target = clamp(fov, SKY_ZOOM_MIN, SKY_ZOOM_MAX);
 }
 
 /** Sky view: ease the telescope back out to the naked eye (still following whatever it was on). */
 export function zoomOutSky() {
 	if (view === 'surface' && skyZoom.target < NAKED_EYE_FOV) autoZoomOut = true;
+}
+
+/**
+ * Sky view: lock the telescope onto a sky item by its search key (see skyFinder.ts).
+ * False if it isn't on show right now (below the horizon, or its constellation isn't fully up).
+ */
+export function lockOnto(key: string): boolean {
+	const item = skyItems.find((i) => i.key === key);
+	if (view !== 'surface' || busy || !item?.hoverable) return false;
+	focusOn(item);
+	return true;
+}
+
+/**
+ * Sky view: turn to look toward an altitude and azimuth (radians; azimuth from
+ * north through east), optionally zooming to a field of view (degrees). Stops
+ * following anything.
+ */
+export function lookToward(alt: number, az: number, fov?: number) {
+	if (view !== 'surface' || busy) return;
+	trackedItem = null;
+	autoZoomOut = false;
+	lookTarget.yaw = az + 2 * Math.PI * Math.round((look.yaw - az) / (2 * Math.PI)); // the short way round
+	lookTarget.pitch = clamp(alt, -0.35, SKY_PITCH_MAX);
+	if (fov !== undefined) skyZoom.target = clamp(fov, SKY_ZOOM_MIN, SKY_ZOOM_MAX);
+}
+
+/** Sky view: where the view points (radians; heading = azimuth from north through east), or null outside it. */
+export function getSkyLook(): { heading: number; pitch: number } | null {
+	if (view !== 'surface' || !surfaceFrame) return null;
+	return { heading: ((look.yaw % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI), pitch: look.pitch };
 }
 
 /** Point the sky view (eased by the frame loop) at a sky item. */
@@ -908,9 +959,11 @@ function rotatePlanet(alongX: number, alongY: number) {
 // ---------------------------------------------------------------------------
 // Sky
 
-const BODY_NAMES: BodyName[] = ['Moon', 'Mercury', 'Venus', 'Mars', 'Jupiter', 'Saturn'];
+const BODY_NAMES: BodyName[] = ['Moon', 'Mercury', 'Venus', 'Mars', 'Jupiter', 'Saturn', 'Uranus', 'Neptune'];
 const BODY_DISTANCE = SKY_RADIUS * 0.97; // just in front of the stars, so the Moon can pass over them
 const DEEP_SKY_DISTANCE = SKY_RADIUS * 1.01; // just behind the stars
+const COMET_DISTANCE = SKY_RADIUS * 0.98; // in front of the stars, behind the Moon and planets
+const METEOR_DISTANCE = SKY_RADIUS * 0.96; // in front of everything: meteors burn up in our own air
 // Deep-sky objects smaller than this on screen (pixels) are drawn this big, and dimmer, so they can be found.
 const DEEP_SKY_MIN_PX = 14;
 // The images fade out toward their edges, so draw them a bit larger than the object's catalog size.
@@ -954,10 +1007,11 @@ function buildSky(): { yaw: number; pitch: number } {
 	for (const constellation of constellations) {
 		const local = new Map(constellation.stars.map((s) => [s.name, celestialDir(s.ra, s.dec).multiplyScalar(SKY_RADIUS)]));
 		const items: SkyItem[] = constellation.stars.map((s) => ({
+			key: `star:${s.name}`,
 			name: `${s.name} · ${constellation.name} · ${s.ly.toLocaleString('en-US')} light-years`, // "Star · Constellation · distance"
 			local: local.get(s.name)!,
 			hoverable: false,
-			detail: STAR_TYPES[starType(s.bv)].label,
+			detail: starDetail(s),
 		}));
 		const stars = starMaterial();
 		celestial.add(
@@ -965,7 +1019,7 @@ function buildSky(): { yaw: number; pitch: number } {
 				starGeometry(
 					constellation.stars.map((s) => ({
 						local: local.get(s.name)!,
-						size: clamp(2.3 - 0.35 * s.mag, 0.8, 2.3), // brighter stars get a bigger glow
+						size: starSize(s.mag),
 						color: starColor(s.bv),
 						twinkle: true,
 						type: starType(s.bv),
@@ -979,6 +1033,35 @@ function buildSky(): { yaw: number; pitch: number } {
 		celestial.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(linePoints), lines));
 		const up = constellationAltitudes(items).every((sinAlt) => sinAlt > 0);
 		skyConstellations.push({ items, stars, lines, opacity: up ? 1 : 0 });
+		skyItems.push(...items);
+	}
+
+	// Famous stars without a stick figure, shown whenever they're up.
+	{
+		const items: SkyItem[] = looseStars.map((s) => ({
+			key: `star:${s.name}`,
+			name: `${s.name} · ${s.constellation} · ${s.ly.toLocaleString('en-US')} light-years`,
+			local: celestialDir(s.ra, s.dec).multiplyScalar(SKY_RADIUS),
+			hoverable: false,
+			detail: starDetail(s),
+		}));
+		const material = starMaterial();
+		celestial.add(
+			new THREE.Points(
+				starGeometry(
+					looseStars.map((s, i) => ({
+						local: items[i].local,
+						size: starSize(s.mag),
+						// Stars past the naked-eye limit are drawn dim.
+						color: starColor(s.bv).multiplyScalar(s.mag > NAKED_EYE_LIMIT ? 0.45 : 1),
+						twinkle: true,
+						type: starType(s.bv),
+					})),
+				),
+				material,
+			),
+		);
+		skyLoose = { items, stars: material };
 		skyItems.push(...items);
 	}
 
@@ -1009,6 +1092,7 @@ function buildSky(): { yaw: number; pitch: number } {
 		celestial!.add(mesh);
 		const size: [number, number] = [THREE.MathUtils.degToRad(o.size[0] / 60), THREE.MathUtils.degToRad(o.size[1] / 60)];
 		const item: SkyItem = {
+			key: `deep:${o.catalog}`,
 			name: `${o.name} · ${o.catalog} · ${o.distance}`,
 			local: center,
 			angularRadius: size[0] / 2,
@@ -1028,6 +1112,30 @@ function buildSky(): { yaw: number; pitch: number } {
 		skyItems.push(item);
 	});
 
+	// Comets; updateSky moves them along their orbits.
+	for (const comet of comets) {
+		const visual = createCometVisual(comet, COMET_DISTANCE);
+		celestial.add(visual.object);
+		const item: SkyItem = { key: `comet:${comet.id}`, name: comet.name, local: new THREE.Vector3(), hoverable: false };
+		skyComets.push({ item, visual, comet });
+		skyItems.push(item);
+	}
+
+	// Meteor showers, each with a hoverable radiant while active.
+	{
+		const showers = createMeteorShowers(METEOR_DISTANCE);
+		celestial.add(showers.object);
+		const items = showers.showers.map(({ shower, radiant }) => ({
+			key: `shower:${shower.id}`,
+			name: `${shower.name} meteor shower · radiant`,
+			local: radiant.clone().multiplyScalar(METEOR_DISTANCE),
+			hoverable: false,
+			focusFov: NAKED_EYE_FOV,
+		}));
+		skyMeteors = { showers, items };
+		skyItems.push(...items);
+	}
+
 	// The Moon and planets; updateSky moves them as simulated time passes.
 	for (const name of BODY_NAMES) {
 		const visual = createBodyVisual(name);
@@ -1044,7 +1152,7 @@ function buildSky(): { yaw: number; pitch: number } {
 			glowPosition = geometry.getAttribute('position') as THREE.BufferAttribute;
 			celestial.add(new THREE.Points(geometry, glow));
 		}
-		const item: SkyItem = { name, local: new THREE.Vector3(), hoverable: false };
+		const item: SkyItem = { key: `body:${name}`, name, local: new THREE.Vector3(), hoverable: false };
 		skyBodies.push({ name, item, visual, glow, glowPosition });
 		skyItems.push(item);
 	}
@@ -1085,8 +1193,11 @@ function removeSky() {
 	groundMaterial = null;
 	skyItems = [];
 	skyConstellations = [];
+	skyLoose = null;
 	skyBodies = [];
 	skyDeep = [];
+	skyComets = [];
+	skyMeteors = null;
 	hoveredItem = null;
 	trackedItem = null;
 }
@@ -1134,6 +1245,11 @@ function updateSky(dt: number, t: number) {
 	starUniforms.uScale.value = renderer.getPixelRatio() * window.innerHeight * 0.5;
 	starUniforms.uZoom.value = NAKED_EYE_FOV / camera.fov;
 
+	if (skyLoose) {
+		skyLoose.stars.uniforms.uOpacity.value = skyFade.stars;
+		const altitudes = constellationAltitudes(skyLoose.items);
+		skyLoose.items.forEach((item, i) => (item.hoverable = altitudes[i] > 0));
+	}
 	for (const c of skyConstellations) {
 		const altitudes = constellationAltitudes(c.items);
 		const target = altitudes.every((sinAlt) => sinAlt > 0) ? 1 : 0;
@@ -1143,6 +1259,17 @@ function updateSky(dt: number, t: number) {
 		c.items.forEach((item, i) => (item.hoverable = c.opacity > 0.5 && altitudes[i] > 0));
 	}
 	updateDeepSky();
+	updateComets(now, dt);
+	if (skyMeteors) {
+		const { showers, items } = skyMeteors;
+		const sinAlt = (d: THREE.Vector3) => tmp.copy(d).applyQuaternion(celestial!.quaternion).dot(surfaceFrame!.n);
+		// With reduced motion, no meteors fall (the radiants still show).
+		showers.update(now, reduceMotion ? 0 : dt, skyFade.stars, sinAlt);
+		showers.showers.forEach(({ shower, radiant, activity }, i) => {
+			items[i].hoverable = activity.active && sinAlt(radiant) > 0;
+			items[i].detail = `Peaks ${shortDate(activity.window.peak)} · about ${Math.round(activity.rate)} an hour now · shown ${METEOR_SPEEDUP}× faster · from ${shower.parent}`;
+		});
+	}
 	updateBodies(now);
 
 	// The faint background stars turn with the sky too, centered on the visitor.
@@ -1221,38 +1348,12 @@ function inView(object: THREE.Object3D): boolean {
  * light spanning the catalog size.
  */
 function loadDeepSkyPhoto(d: (typeof skyDeep)[number], url: string) {
-	const material = new THREE.ShaderMaterial({
-		uniforms: { uMap: { value: null }, uOpacity: { value: 0 }, uBackground: { value: 0 } },
-		vertexShader: /* glsl */ `
-			varying vec2 vUv;
-			void main() {
-				vUv = uv;
-				gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-			}
-		`,
-		fragmentShader: /* glsl */ `
-			uniform sampler2D uMap;
-			uniform float uOpacity;
-			uniform float uBackground;
-			varying vec2 vUv;
-			void main() {
-				// Take out the photo's sky glow, so only the object adds light, and fade the square edges.
-				vec3 color = max(texture2D(uMap, vUv).rgb - uBackground, 0.0) / (1.0 - uBackground);
-				vec2 edge = min(vUv, 1.0 - vUv);
-				float fade = smoothstep(0.0, 0.15, edge.x) * smoothstep(0.0, 0.15, edge.y);
-				gl_FragColor = vec4(color * fade * uOpacity, 1.0);
-				#include <colorspace_fragment>
-			}
-		`,
-		transparent: true,
-		depthWrite: false,
-		blending: THREE.AdditiveBlending,
-	});
+	const material = photoMaterial();
 	const photo: DeepSkyPhoto = { material, stage: 'loading', mix: 0 };
 	d.photo = photo;
 	loadSkyImage(url)
 		.then(({ texture, bitmap }) => {
-			const fit = fitDeepSkyPhoto(bitmap);
+			const fit = fitPhoto(bitmap);
 			// Size of the photo's long side on the sky, kept within sensible framing.
 			const major = d.size[0];
 			const longSide = clamp(major / (4 * fit.spread), major * 1.2, major * 6);
@@ -1275,7 +1376,7 @@ function loadDeepSkyPhoto(d: (typeof skyDeep)[number], url: string) {
 			pivot.quaternion.copy(d.mesh.quaternion);
 			pivot.add(mesh);
 			d.mesh.parent?.add(pivot);
-			material.uniforms.uBackground.value = fit.background;
+			material.uniforms.uBackground.value.copy(fit.background);
 			material.uniforms.uMap.value = texture;
 			photo.stage = 'small';
 		})
@@ -1283,64 +1384,22 @@ function loadDeepSkyPhoto(d: (typeof skyDeep)[number], url: string) {
 }
 
 /**
- * Where a photo's light is: its center (0–1 across the image), the angle of its
- * long axis (radians from the image's x axis), the standard deviation of the light
- * along that axis (as a fraction of the image's long side), and the level of the
- * photo's sky background (linear).
+ * Each frame: move the comets along their orbits, show those bright enough to
+ * see, and keep their hover names (distance, brightness) current.
  */
-function fitDeepSkyPhoto(bitmap: ImageBitmap) {
-	const aspect = bitmap.width / bitmap.height;
-	const w = Math.max(8, Math.round(64 * Math.min(1, aspect)));
-	const h = Math.max(8, Math.round(64 * Math.min(1, 1 / aspect)));
-	const canvas = document.createElement('canvas');
-	canvas.width = w;
-	canvas.height = h;
-	const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
-	// The bitmap was decoded upside down for WebGL, so canvas rows run up the photo, like texture v.
-	ctx.drawImage(bitmap, 0, 0, w, h);
-	const pixels = ctx.getImageData(0, 0, w, h).data;
-	const light = new Float32Array(w * h);
-	for (let i = 0; i < w * h; i++) {
-		light[i] = (0.2126 * pixels[i * 4] + 0.7152 * pixels[i * 4 + 1] + 0.0722 * pixels[i * 4 + 2]) / 255;
+function updateComets(now: Date, dt: number) {
+	const pxPerRadian = window.innerHeight / 2 / Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
+	for (const { item, visual, comet } of skyComets) {
+		const state = cometState(comet, now);
+		visual.update(state, { opacity: skyFade.stars, pxPerRadian, dt, inView: inView(visual.object.children[0]) });
+		item.local.copy(visual.head);
+		const bright = state.magnitude < COMET_LIMIT;
+		item.hoverable = bright && constellationAltitudes([item])[0] > 0;
+		item.name = `${comet.name} · ${state.distance.toFixed(2)} AU · magnitude ${state.magnitude.toFixed(1)}`;
+		item.detail = visual.showingPhoto() ? creditLine(cometImages[comet.id]) : comet.about;
+		// Frame the whole tail when locking on.
+		item.focusFov = clamp(THREE.MathUtils.radToDeg(visual.tailAngle()) * 1.8, 1, NAKED_EYE_FOV);
 	}
-	const background = Float32Array.from(light).sort()[Math.floor(w * h * 0.1)];
-	let total = 0;
-	let sx = 0;
-	let sy = 0;
-	for (let y = 0; y < h; y++) {
-		for (let x = 0; x < w; x++) {
-			const weight = Math.max(0, light[y * w + x] - background);
-			total += weight;
-			sx += weight * x;
-			sy += weight * y;
-		}
-	}
-	if (total <= 0) return { aspect, center: [0.5, 0.5], angle: Math.PI / 2, spread: 0.25, background: 0 };
-	const cx = sx / total;
-	const cy = sy / total;
-	let xx = 0;
-	let yy = 0;
-	let xy = 0;
-	for (let y = 0; y < h; y++) {
-		for (let x = 0; x < w; x++) {
-			const weight = Math.max(0, light[y * w + x] - background);
-			xx += weight * (x - cx) ** 2;
-			yy += weight * (y - cy) ** 2;
-			xy += weight * (x - cx) * (y - cy);
-		}
-	}
-	xx /= total;
-	yy /= total;
-	xy /= total;
-	const major = (xx + yy) / 2 + Math.sqrt(((xx - yy) / 2) ** 2 + xy ** 2);
-	return {
-		aspect,
-		center: [(cx + 0.5) / w, (cy + 0.5) / h] as [number, number],
-		angle: 0.5 * Math.atan2(2 * xy, xx - yy),
-		spread: Math.max(0.02, Math.sqrt(major) / 64),
-		// Subtract a little less than the measured sky, so faint outer light survives.
-		background: 0.8 * Math.pow(background, 2.2),
-	};
 }
 
 /**
@@ -1395,7 +1454,9 @@ function updateBodies(now: Date) {
 			const size = entry.glow.uniforms.uSize;
 			size.value = clamp(2.3 - 0.35 * b.magnitude, 0.8, 3.4);
 			const diskPx = 2 * item.angularRadius * pxPerRadian;
-			entry.glow.uniforms.uOpacity.value = entry.visual.object.visible ? skyFade.stars * (1 - smoothstep(3, 10, diskPx)) : 0;
+			// Uranus and Neptune are at or past the naked-eye limit: just a dim point.
+			const faint = clamp(1 - (b.magnitude - 4.5) * 0.2, 0.35, 1);
+			entry.glow.uniforms.uOpacity.value = entry.visual.object.visible ? skyFade.stars * faint * (1 - smoothstep(3, 10, diskPx)) : 0;
 		}
 	}
 }
@@ -1793,6 +1854,20 @@ const STAR_TYPES: { maxBv: number; label: string; core: string; halo: [number, n
 	{ maxBv: 1.55, label: 'K-type star · orange', core: '#fff0dc', halo: [255, 185, 115], spikes: 0.6 },
 	{ maxBv: Infinity, label: 'M-type star · cool, red-orange', core: '#ffe6d2', halo: [255, 130, 85], spikes: 0.5 },
 ];
+
+/** Point size for a star of a given magnitude: brighter stars get a bigger glow. */
+function starSize(mag: number): number {
+	return clamp(2.3 - 0.35 * mag, 0.8, 2.8);
+}
+
+// Stars fainter than this (magnitude) can't be seen without a telescope.
+const NAKED_EYE_LIMIT = 6.5;
+
+/** A star's hover line: its type, and whether it needs a telescope. */
+function starDetail(s: SkyStar): string {
+	const type = STAR_TYPES[starType(s.bv)].label;
+	return s.mag > NAKED_EYE_LIMIT ? `${type} · too faint to see without a telescope` : type;
+}
 
 function starType(bv: number): number {
 	return STAR_TYPES.findIndex((t) => bv < t.maxBv);
