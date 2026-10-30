@@ -11,6 +11,7 @@
 //     alt - altitude: angle above the horizon (0 = horizon, 90° = straight overhead)
 //     az  - azimuth: compass direction (0 = north, 90° = east, 180° = south, 270° = west)
 import { constellations, type Constellation, type SkyStar } from '../data/constellations';
+import type { BodyName } from './ephemeris';
 
 /** Someone standing somewhere on Earth. */
 export interface Observer {
@@ -122,12 +123,110 @@ export function altAz(ra: number, dec: number, obs: Observer, date: Date): { alt
 }
 
 /**
+ * Local sidereal time as an angle (radians): the right ascension crossing the
+ * observer's north-south line right now. This is how far Earth has turned
+ * under the stars; rotating the whole celestial sphere by it moves every star
+ * at once (see cosmos.ts).
+ */
+export function siderealAngle(obs: Observer, date: Date): number {
+	const daysSinceJ2000 = date.getTime() / 86400000 + 2440587.5 - 2451545.0;
+	const gmst = 280.46061837 + 360.98564736629 * daysSinceJ2000; // degrees, as in altAz
+	return ((gmst + obs.lon) * Math.PI) / 180;
+}
+
+/** Unit vector on the celestial sphere: x toward RA 0h, y toward RA 6h, z toward the north celestial pole. */
+export function equatorialVector(ra: number, dec: number): [number, number, number] {
+	const a = (ra * 15 * Math.PI) / 180;
+	const d = (dec * Math.PI) / 180;
+	return [Math.cos(d) * Math.cos(a), Math.cos(d) * Math.sin(a), Math.sin(d)];
+}
+
+// North pole directions of the Moon and planets (J2000 RA, Dec in degrees), from
+// the IAU rotation models; they orient bands, rings and caps. The Moon's is near
+// the ecliptic pole.
+export const BODY_POLES: Record<BodyName, [number, number]> = {
+	Moon: [270.0, 66.54],
+	Mercury: [281.01, 61.42],
+	Venus: [272.76, 67.16],
+	Mars: [317.68, 52.89],
+	Jupiter: [268.06, 64.5],
+	Saturn: [40.59, 83.54],
+};
+
+// ---------------------------------------------------------------------------
+// The sky view's clock: real time by default, or sped up, slowed, paused or run
+// backward. Speeds are simulated seconds per real second.
+
+const SPEEDS = [-604800, -86400, -21600, -3600, -600, -60, -1, 1, 60, 600, 3600, 21600, 86400, 604800];
+const REAL_TIME = SPEEDS.indexOf(1);
+let speedIndex = REAL_TIME;
+let paused = false;
+// The simulated time was clockSim when the real clock read clockReal.
+let clockReal = Date.now();
+let clockSim = clockReal;
+
+function simulatedMs(): number {
+	return paused ? clockSim : clockSim + (Date.now() - clockReal) * SPEEDS[speedIndex];
+}
+
+/** Restart the clock's reference point from the current simulated time (before changing speed). */
+function rebase() {
+	clockSim = simulatedMs();
+	clockReal = Date.now();
+}
+
+/** The sky view's current (simulated) moment. */
+export function skyNow(): Date {
+	return new Date(simulatedMs());
+}
+
+/** Step one notch faster forward (+1) or faster backward (-1); unpauses. */
+export function changeSpeed(step: 1 | -1) {
+	rebase();
+	speedIndex = Math.min(SPEEDS.length - 1, Math.max(0, speedIndex + step));
+	paused = false;
+}
+
+export function togglePause() {
+	rebase();
+	paused = !paused;
+}
+
+/** Back to the present, at real-time speed. */
+export function resetClock() {
+	clockReal = clockSim = Date.now();
+	speedIndex = REAL_TIME;
+	paused = false;
+}
+
+/** What the time controls show: the speed in words, and whether we're at the live present. */
+export function clockState(): { speed: string; backward: boolean; paused: boolean; live: boolean } {
+	const speed = SPEEDS[speedIndex];
+	const size = Math.abs(speed);
+	const names: Record<number, string> = {
+		1: 'Real time',
+		60: '1 min/s',
+		600: '10 min/s',
+		3600: '1 hr/s',
+		21600: '6 hr/s',
+		86400: '1 day/s',
+		604800: '1 week/s',
+	};
+	return {
+		speed: names[size],
+		backward: speed < 0,
+		paused,
+		live: !paused && speed === 1 && Math.abs(simulatedMs() - Date.now()) < 60000,
+	};
+}
+
+/**
  * Place every catalog constellation in the observer's sky. Featured is the one
  * whose lowest star is highest above the horizon right now; visible is every
  * constellation whose stars are all above the horizon, so each one shown is
  * complete (a rising or setting one appears once it is fully up).
  */
-export function chooseSky(obs: Observer = observer, date = new Date()): SkyChoice {
+export function chooseSky(obs: Observer = observer, date = skyNow()): SkyChoice {
 	// placed: each constellation with its stars merged with their current alt/az.
 	const placed: PlacedConstellation[] = constellations.map((constellation) => ({
 		constellation,

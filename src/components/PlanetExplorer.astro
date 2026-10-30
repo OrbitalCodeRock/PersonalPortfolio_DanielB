@@ -48,6 +48,26 @@ const { items } = Astro.props;
 		</div>
 
 		<div class="star-tip" data-star-tip aria-hidden="true"></div>
+		<div class="zoom-readout" data-zoom-readout aria-hidden="true"></div>
+
+		<!-- Time controls for the sky view: run time faster, slower, backward, or pause. -->
+		<div class="time-bar" role="group" aria-label="Sky time">
+			<button class="time-btn" type="button" aria-label="Faster backward" title="Faster backward" data-time-back>
+				<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 6 3 12l8 6zM21 6l-8 6 8 6z"></path></svg>
+			</button>
+			<button class="time-btn" type="button" aria-label="Pause" title="Pause" data-time-pause>
+				<svg viewBox="0 0 24 24" aria-hidden="true" data-icon-pause><path d="M7 5h3v14H7zM14 5h3v14h-3z"></path></svg>
+				<svg viewBox="0 0 24 24" aria-hidden="true" data-icon-play hidden><path d="M8 5v14l11-7z"></path></svg>
+			</button>
+			<button class="time-btn" type="button" aria-label="Faster forward" title="Faster forward" data-time-forward>
+				<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 6l8 6-8 6zM3 6l8 6-8 6z"></path></svg>
+			</button>
+			<div class="time-readout" aria-live="off">
+				<span class="time-date" data-time-date></span>
+				<span class="time-speed" data-time-speed></span>
+			</div>
+			<button class="time-btn time-now" type="button" title="Back to the present" data-time-now>Now</button>
+		</div>
 	</div>
 </div>
 
@@ -222,10 +242,123 @@ const { items } = Astro.props;
 	.star-tip:global(.is-visible) {
 		opacity: 1;
 	}
+
+	/* Telescope magnification, bottom left, once zoomed in (text set by cosmos.ts). */
+	.zoom-readout {
+		position: absolute;
+		left: 16px;
+		bottom: 20px;
+		z-index: 201;
+		pointer-events: none;
+		padding: 4px 10px;
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		background: rgba(5, 7, 15, 0.7);
+		color: var(--text-muted);
+		font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+		font-size: 0.8rem;
+		letter-spacing: 0.05em;
+		opacity: 0;
+		transition: opacity 0.3s;
+	}
+	.zoom-readout:global(.is-visible) {
+		opacity: 1;
+	}
+
+	/* Time controls, bottom center, in the sky view only. */
+	.time-bar {
+		position: absolute;
+		left: 50%;
+		bottom: 18px;
+		z-index: 201;
+		display: none;
+		align-items: center;
+		gap: 4px;
+		padding: 5px;
+		border: 1px solid var(--border);
+		border-radius: 999px;
+		background: rgba(5, 7, 15, 0.75);
+		transform: translateX(-50%);
+	}
+	:global(body[data-view='surface']) .time-bar {
+		display: flex;
+	}
+	.time-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 32px;
+		height: 32px;
+		padding: 0 8px;
+		border: 1px solid transparent;
+		border-radius: 999px;
+		background: none;
+		color: var(--text);
+		font: inherit;
+		font-size: 0.8rem;
+		cursor: pointer;
+		transition:
+			border-color 0.2s,
+			opacity 0.2s;
+	}
+	.time-btn:hover,
+	.time-btn:focus-visible {
+		border-color: var(--border-strong);
+	}
+	.time-btn:disabled {
+		opacity: 0.35;
+		cursor: default;
+		border-color: transparent;
+	}
+	.time-btn svg {
+		width: 15px;
+		height: 15px;
+		fill: currentColor;
+	}
+	.time-btn svg[hidden] {
+		display: none; /* the hidden attribute alone doesn't hide SVG elements */
+	}
+	.time-readout {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		min-width: 150px;
+		padding: 0 8px;
+		line-height: 1.2;
+		pointer-events: none;
+	}
+	.time-date {
+		color: var(--text);
+		font-size: 0.78rem;
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+	}
+	.time-speed {
+		color: var(--text-muted);
+		font-size: 0.7rem;
+		white-space: nowrap;
+	}
+	/* Leave room for the magnification readout on narrow screens. */
+	@media (max-width: 560px) {
+		.time-bar {
+			left: auto;
+			right: 12px;
+			transform: none;
+		}
+		.time-readout {
+			min-width: 0;
+		}
+	}
+
+	/* Planets and the Moon can be clicked to focus the telescope on them. */
+	.stage:global(.is-over-body) {
+		cursor: zoom-in;
+	}
 </style>
 
 <script>
 	import { navigate } from 'astro:transitions/client';
+	import { changeSpeed, clockState, resetClock, skyNow, togglePause } from '../scripts/sky';
 	import {
 		bindHome,
 		diveToCard,
@@ -251,6 +384,7 @@ const { items } = Astro.props;
 		const stage = root.querySelector<HTMLElement>('[data-stage]')!;
 		const planetCards = root.querySelector<HTMLElement>('[data-planet-cards]')!;
 		const starTip = root.querySelector<HTMLElement>('[data-star-tip]')!;
+		const zoomReadout = root.querySelector<HTMLElement>('[data-zoom-readout]')!;
 		const cards = [...root.querySelectorAll<HTMLElement>('[data-planet-card]')];
 
 		const go = async (target: View) => {
@@ -295,7 +429,45 @@ const { items } = Astro.props;
 		};
 		cards.forEach((card, i) => card.addEventListener('click', (e) => travel(e, () => diveToCard(i)), { signal }));
 
-		bindHome({ eye, stage, cards, starTip, onEgg: () => go('surface') });
+		// Time controls: the sky view's clock lives in sky.ts; cosmos.ts reads it every frame.
+		const timeDate = root.querySelector<HTMLElement>('[data-time-date]')!;
+		const timeSpeed = root.querySelector<HTMLElement>('[data-time-speed]')!;
+		const pauseButton = root.querySelector<HTMLButtonElement>('[data-time-pause]')!;
+		const nowButton = root.querySelector<HTMLButtonElement>('[data-time-now]')!;
+		const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+		const showTime = () => {
+			const state = clockState();
+			timeDate.textContent = dateFormat.format(skyNow());
+			timeSpeed.textContent = state.paused ? 'Paused' : `${state.backward ? '◀' : '▶'} ${state.speed}`;
+			pauseButton.querySelector('[data-icon-pause]')!.toggleAttribute('hidden', state.paused);
+			pauseButton.querySelector('[data-icon-play]')!.toggleAttribute('hidden', !state.paused);
+			pauseButton.setAttribute('aria-label', state.paused ? 'Play' : 'Pause');
+			pauseButton.title = state.paused ? 'Play' : 'Pause';
+			nowButton.disabled = state.live;
+		};
+		const timeActions: [string, () => void][] = [
+			['[data-time-back]', () => changeSpeed(-1)],
+			['[data-time-forward]', () => changeSpeed(1)],
+			['[data-time-pause]', togglePause],
+			['[data-time-now]', resetClock],
+		];
+		for (const [selector, action] of timeActions) {
+			root.querySelector(selector)!.addEventListener(
+				'click',
+				() => {
+					action();
+					showTime();
+				},
+				{ signal },
+			);
+		}
+		const timeTicker = setInterval(() => {
+			if (getView() === 'surface') showTime();
+		}, 250);
+		signal.addEventListener('abort', () => clearInterval(timeTicker));
+		showTime();
+
+		bindHome({ eye, stage, cards, starTip, zoomReadout, onEgg: () => go('surface') });
 		eye.addEventListener('click', () => go('planet'), { signal });
 		root.querySelector('[data-back]')!.addEventListener('click', back, { signal });
 		document.addEventListener(
