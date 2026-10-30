@@ -1,6 +1,6 @@
 ---
 // Home page overlay for the planet views in src/scripts/cosmos.ts:
-// the eye button, planet cards, constellation labels, and controls.
+// the eye button, planet cards, the star name tip, and controls.
 import type { Section } from '../data/sections';
 import PlanetEye from './PlanetEye.astro';
 
@@ -21,8 +21,19 @@ const { items } = Astro.props;
 				<span class="back-planet">Back to home</span>
 				<span class="back-surface">Back to the planet</span>
 			</button>
+			<button
+				class="back-btn locate-btn"
+				type="button"
+				aria-label="Show the sky from my location"
+				title="Show the sky from my location"
+				data-locate
+			>
+				<svg viewBox="0 0 24 24" aria-hidden="true">
+					<path d="M12 21s-6.5-6.2-6.5-11.2a6.5 6.5 0 0 1 13 0C18.5 14.8 12 21 12 21z"></path>
+					<circle cx="12" cy="9.8" r="2.4"></circle>
+				</svg>
+			</button>
 			<p class="hint hint-planet">Drag to spin the planet. Pick a card to land there.</p>
-			<p class="hint hint-surface">You found the landing site. Drag to look around the sky.</p>
 		</div>
 
 		<div class="planet-cards" data-planet-cards>
@@ -36,15 +47,7 @@ const { items } = Astro.props;
 			}
 		</div>
 
-		<div class="star-labels" data-star-labels>
-			{
-				items.map((s) => (
-					<a class="star-label" href={s.href} data-star-label>
-						{s.title}
-					</a>
-				))
-			}
-		</div>
+		<div class="star-tip" data-star-tip aria-hidden="true"></div>
 	</div>
 </div>
 
@@ -110,33 +113,52 @@ const { items } = Astro.props;
 		font-size: 0.9rem;
 	}
 	.back-surface,
-	.hint-surface,
+	.locate-btn,
 	:global(body[data-view='surface']) .back-planet,
 	:global(body[data-view='surface']) .hint-planet {
 		display: none;
 	}
-	:global(body[data-view='surface']) .back-surface,
-	:global(body[data-view='surface']) .hint-surface {
+	:global(body[data-view='surface']) .back-surface {
 		display: inline;
 	}
+	:global(body[data-view='surface']) .locate-btn:not([hidden]) {
+		display: inline-flex;
+	}
+	/* Round, icon-only button beside Back. */
+	.locate-btn {
+		width: 38px;
+		height: 38px;
+		padding: 0;
+		align-items: center;
+		justify-content: center;
+	}
+	.locate-btn svg {
+		width: 18px;
+		height: 18px;
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 1.8;
+		stroke-linejoin: round;
+	}
+	.locate-btn:disabled {
+		opacity: 0.5;
+		cursor: progress;
+	}
 
-	.planet-cards,
-	.star-labels {
+	.planet-cards {
 		position: absolute;
 		inset: 0;
 		pointer-events: none;
 		opacity: 0;
 		transition: opacity 0.5s;
 	}
-	:global(body[data-view='planet']) .planet-cards,
-	:global(body[data-view='surface']) .star-labels {
+	:global(body[data-view='planet']) .planet-cards {
 		opacity: 1;
 	}
 
-	/* While flying to a card or star, clear the UI out of the way. */
+	/* While flying to a card, clear the UI out of the way. */
 	.stage.is-traveling .stage-bar,
-	.stage.is-traveling .planet-cards,
-	.stage.is-traveling .star-labels {
+	.stage.is-traveling .planet-cards {
 		opacity: 0;
 		pointer-events: none;
 		transition: opacity 0.3s;
@@ -179,25 +201,26 @@ const { items } = Astro.props;
 		display: block;
 	}
 
-	.star-label {
+	/* Star name, shown above the star nearest the pointer (positioned by cosmos.ts). */
+	.star-tip {
 		position: absolute;
 		left: 0;
 		top: 0;
-		pointer-events: auto;
+		z-index: 201; /* above the stage bar, so it stays readable near the top */
+		pointer-events: none;
 		padding: 3px 10px;
-		border: 1px solid transparent;
+		border: 1px solid var(--border);
 		border-radius: 999px;
-		background: rgba(5, 7, 15, 0.55);
+		background: rgba(5, 7, 15, 0.7);
 		color: var(--text);
 		font-size: 0.85rem;
 		letter-spacing: 0.04em;
-		text-decoration: none;
 		white-space: nowrap;
-		transition: border-color 0.2s;
+		opacity: 0;
+		transition: opacity 0.15s;
 	}
-	.star-label:hover,
-	.star-label:focus-visible {
-		border-color: var(--border-strong);
+	.star-tip:global(.is-visible) {
+		opacity: 1;
 	}
 </style>
 
@@ -206,11 +229,11 @@ const { items } = Astro.props;
 	import {
 		bindHome,
 		diveToCard,
-		flyToStar,
+		getSkyInfo,
 		getView,
 		isBusy,
 		setView,
-		takePlanetRequest,
+		useVisitorLocation,
 		type View,
 	} from '../scripts/cosmos';
 
@@ -227,9 +250,8 @@ const { items } = Astro.props;
 		const eye = root.querySelector<HTMLElement>('[data-eye]')!;
 		const stage = root.querySelector<HTMLElement>('[data-stage]')!;
 		const planetCards = root.querySelector<HTMLElement>('[data-planet-cards]')!;
-		const starLabels = root.querySelector<HTMLElement>('[data-star-labels]')!;
+		const starTip = root.querySelector<HTMLElement>('[data-star-tip]')!;
 		const cards = [...root.querySelectorAll<HTMLElement>('[data-planet-card]')];
-		const labels = [...root.querySelectorAll<HTMLElement>('[data-star-label]')];
 
 		const go = async (target: View) => {
 			if (isBusy() || getView() === target) return;
@@ -237,13 +259,30 @@ const { items } = Astro.props;
 			document.body.dataset.view = target;
 			stage.inert = target === 'orbit';
 			planetCards.inert = target !== 'planet';
-			starLabels.inert = target !== 'surface';
-			await setView(target);
+			const arrived = setView(target);
+			// The sky is chosen as soon as the landing starts.
+			if (target === 'surface') updateLocate();
+			await arrived;
 			if (target !== 'orbit') root.querySelector<HTMLElement>('[data-back]')!.focus({ preventScroll: true });
 		};
+
+		// Location button: hidden once the sky already shows the visitor's location.
+		const locate = root.querySelector<HTMLButtonElement>('[data-locate]')!;
+		const updateLocate = () => {
+			locate.hidden = getSkyInfo()?.place === 'your location';
+		};
+		locate.addEventListener(
+			'click',
+			async () => {
+				locate.disabled = true;
+				if (await useVisitorLocation()) updateLocate();
+				locate.disabled = false;
+			},
+			{ signal },
+		);
 		const back = () => go(getView() === 'surface' ? 'planet' : 'orbit');
 
-		// Fly to the clicked card or star, then load the page right where the camera ends up.
+		// Fly to the clicked card, then load the page right where the camera ends up.
 		// Modified clicks (new tab, etc.) keep their normal behavior.
 		const travel = async (e: MouseEvent, fly: () => Promise<void>) => {
 			if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
@@ -255,11 +294,8 @@ const { items } = Astro.props;
 			navigate(href);
 		};
 		cards.forEach((card, i) => card.addEventListener('click', (e) => travel(e, () => diveToCard(i)), { signal }));
-		labels.forEach((label, i) => label.addEventListener('click', (e) => travel(e, () => flyToStar(i)), { signal }));
 
-		bindHome({ eye, stage, cards, labels, onEgg: () => go('surface') });
-		// Arriving from the eye over the faraway planet: fly straight into the planet view.
-		if (takePlanetRequest()) go('planet');
+		bindHome({ eye, stage, cards, starTip, onEgg: () => go('surface') });
 		eye.addEventListener('click', () => go('planet'), { signal });
 		root.querySelector('[data-back]')!.addEventListener('click', back, { signal });
 		document.addEventListener(

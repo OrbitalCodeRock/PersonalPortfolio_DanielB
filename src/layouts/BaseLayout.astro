@@ -1,6 +1,5 @@
 ---
 import { ClientRouter } from 'astro:transitions';
-import AwayEye from '../components/AwayEye.astro';
 import Starfield from '../components/Starfield.astro';
 import { sections } from '../data/sections';
 import '../styles/global.css';
@@ -32,7 +31,6 @@ const path = Astro.url.pathname;
 	</head>
 	<body>
 		<Starfield />
-		{path !== '/' && <AwayEye />}
 		<!-- Its own transition layer, so it stays above the live background layer (see global.css). -->
 		<header class="site-header container" transition:name="site-header">
 			<a class="logo" href="/">DB</a>
