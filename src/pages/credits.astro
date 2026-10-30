@@ -1,0 +1,95 @@
+---
+// Credits for the real images the sky view shows when the telescope zooms in.
+// Each was resized and recompressed for the web; the source link has the original
+// and its full license terms.
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { deepSky } from '../data/deepSky';
+import { deepSkyImages, planetMaps, type ImageCredit } from '../data/skyImages';
+
+const planets = Object.entries(planetMaps).map(([name, credit]) => ({ name, credit }));
+const deep = deepSky
+	.filter((o) => deepSkyImages[o.catalog])
+	.map((o) => ({ name: `${o.name} (${o.catalog})`, credit: deepSkyImages[o.catalog] as ImageCredit }));
+const sections = [
+	{ title: 'Moon and planets', intro: 'Surface maps wrapped onto the globes once they are big enough on screen.', rows: planets },
+	{ title: 'Galaxies, nebulae and star clusters', intro: 'Photos shown in place of the drawn images when you zoom in.', rows: deep },
+];
+---
+
+<BaseLayout title="Image Credits" description="Credits and licenses for the astronomy images used on this site.">
+	<h1>Image credits</h1>
+	<p class="intro">
+		The sky view swaps in real images as you zoom in. They come from Wikimedia Commons, NASA, ESA, ESO and
+		astrophotographers who share their work under open licenses. Each was resized and recompressed for the web;
+		follow the source link for the original and its full license. The close-up star images and the drawn
+		galaxies and nebulae are made in code.
+	</p>
+
+	{
+		sections.map((section) => (
+			<section>
+				<h2>{section.title}</h2>
+				<p class="section-intro">{section.intro}</p>
+				<ul class="credits card">
+					{section.rows.map(({ name, credit }) => (
+						<li>
+							<strong>{name}</strong>
+							<span>
+								{credit.artist} · {credit.license} ·{' '}
+								<a href={credit.source} target="_blank" rel="noopener">
+									source
+								</a>
+							</span>
+						</li>
+					))}
+				</ul>
+			</section>
+		))
+	}
+</BaseLayout>
+
+<style>
+	h1 {
+		font-size: clamp(2rem, 5vw, 3rem);
+		margin: 0 0 12px;
+	}
+	.intro {
+		color: var(--text-muted);
+		font-size: 1.05rem;
+		max-width: 720px;
+	}
+	h2 {
+		margin: 36px 0 4px;
+	}
+	.section-intro {
+		color: var(--text-muted);
+		margin: 0 0 12px;
+	}
+	.credits {
+		list-style: none;
+		margin: 0;
+		padding: 6px 0;
+	}
+	.credits li {
+		display: grid;
+		grid-template-columns: minmax(160px, 260px) 1fr;
+		gap: 4px 16px;
+		padding: 10px 20px;
+		border-top: 1px solid var(--border);
+	}
+	.credits li:first-child {
+		border-top: none;
+	}
+	.credits span {
+		color: var(--text-muted);
+		overflow-wrap: anywhere;
+	}
+	.credits a {
+		color: var(--accent);
+	}
+	@media (max-width: 640px) {
+		.credits li {
+			grid-template-columns: 1fr;
+		}
+	}
+</style>

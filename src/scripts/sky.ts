@@ -246,7 +246,9 @@ export function chooseSky(obs: Observer = observer, date = skyNow()): SkyChoice 
 	// lowest: altitude of a constellation's lowest star. The featured one is the
 	// constellation that is entirely well above the horizon, not just partly.
 	const lowest = (c: PlacedConstellation) => Math.min(...c.stars.map((s) => s.alt));
-	const featured = placed.reduce((best, c) => (lowest(c) > lowest(best) ? c : best));
+	const featured = placed
+		.filter((c) => c.constellation.feature !== false)
+		.reduce((best, c) => (lowest(c) > lowest(best) ? c : best));
 	const visible = placed.filter((c) => lowest(c) > 0);
 	// The featured one is shown even in the rare case none is fully up.
 	if (!visible.includes(featured)) visible.push(featured);

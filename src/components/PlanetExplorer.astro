@@ -37,7 +37,10 @@ const { items } = Astro.props;
 		</div>
 
 		<div class="star-tip" data-star-tip aria-hidden="true"></div>
-		<div class="zoom-readout" data-zoom-readout aria-hidden="true"></div>
+		<div class="zoom-readout" data-zoom-box>
+			<span aria-hidden="true" data-zoom-readout></span>
+			<button class="zoom-out" type="button" title="Zoom back out to the naked eye" data-zoom-out>Zoom out</button>
+		</div>
 
 		<!--
 			Time controls for the sky view: scrub through the day, type or pick a date and
@@ -121,6 +124,8 @@ const { items } = Astro.props;
 					</label>
 					<button class="place-option place-go" type="submit">Go</button>
 				</form>
+				<!-- A new tab, so the sky stays where it is. -->
+				<a class="place-credits" href="/credits" target="_blank" rel="noopener">Image credits</a>
 			</div>
 		</div>
 	</div>
@@ -273,15 +278,26 @@ const { items } = Astro.props;
 	.star-tip:global(.is-visible) {
 		opacity: 1;
 	}
+	/* Image credit, under the name while a real image is showing. */
+	.star-tip :global(small) {
+		display: block;
+		color: var(--text-muted);
+		font-size: 0.7rem;
+		letter-spacing: 0;
+		text-align: center;
+	}
 
-	/* Telescope magnification, bottom left, once zoomed in (text set by cosmos.ts). */
+	/* Telescope magnification and a zoom-out button, bottom left, once zoomed in (text set by cosmos.ts). */
 	.zoom-readout {
 		position: absolute;
 		left: 16px;
 		bottom: 20px;
 		z-index: 201;
+		display: flex;
+		align-items: center;
+		gap: 10px;
 		pointer-events: none;
-		padding: 4px 10px;
+		padding: 4px 4px 4px 10px;
 		border: 1px solid var(--border);
 		border-radius: 6px;
 		background: rgba(5, 7, 15, 0.7);
@@ -294,6 +310,21 @@ const { items } = Astro.props;
 	}
 	.zoom-readout:global(.is-visible) {
 		opacity: 1;
+		pointer-events: auto;
+	}
+	.zoom-out {
+		padding: 2px 8px;
+		border: 1px solid var(--border);
+		border-radius: 4px;
+		background: none;
+		color: var(--text);
+		font: inherit;
+		letter-spacing: 0;
+		cursor: pointer;
+	}
+	.zoom-out:hover {
+		border-color: var(--border-strong);
+		color: var(--accent);
 	}
 
 	/* Time controls, bottom center, in the sky view only. */
@@ -485,6 +516,15 @@ const { items } = Astro.props;
 		color: #ffb4a8;
 		font-size: 0.8rem;
 	}
+	.place-credits {
+		display: block;
+		margin: 8px 8px 2px;
+		color: var(--text-muted);
+		font-size: 0.75rem;
+	}
+	.place-credits:hover {
+		color: var(--accent);
+	}
 	.place-custom {
 		display: grid;
 		grid-template-columns: 1fr 1fr auto;
@@ -543,7 +583,7 @@ const { items } = Astro.props;
 		}
 	}
 
-	/* Planets and the Moon can be clicked to focus the telescope on them. */
+	/* Anything named in the sky (planets, the Moon, deep-sky objects, stars) can be clicked to lock the telescope onto it. */
 	.stage:global(.is-over-body) {
 		cursor: zoom-in;
 	}
@@ -563,7 +603,7 @@ const { items } = Astro.props;
 		togglePause,
 		type Observer,
 	} from '../scripts/sky';
-	import { bindHome, diveToCard, getView, isBusy, refreshSky, setView, type View } from '../scripts/cosmos';
+	import { bindHome, diveToCard, getView, isBusy, refreshSky, setView, zoomOutSky, type View } from '../scripts/cosmos';
 
 	let pageAbort: AbortController | null = null;
 
@@ -579,6 +619,7 @@ const { items } = Astro.props;
 		const stage = root.querySelector<HTMLElement>('[data-stage]')!;
 		const planetCards = root.querySelector<HTMLElement>('[data-planet-cards]')!;
 		const starTip = root.querySelector<HTMLElement>('[data-star-tip]')!;
+		const zoomBox = root.querySelector<HTMLElement>('[data-zoom-box]')!;
 		const zoomReadout = root.querySelector<HTMLElement>('[data-zoom-readout]')!;
 		const cards = [...root.querySelectorAll<HTMLElement>('[data-planet-card]')];
 
@@ -741,6 +782,9 @@ const { items } = Astro.props;
 			{ signal },
 		);
 		timeBar.addEventListener('wheel', (e) => e.stopPropagation(), { signal });
+		// The zoom-out button: likewise not a press on the sky.
+		zoomBox.addEventListener('pointerdown', (e) => e.stopPropagation(), { signal });
+		root.querySelector('[data-zoom-out]')!.addEventListener('click', zoomOutSky, { signal });
 		// Opening the date picker from the keyboard closes the location menu too.
 		timeDate.addEventListener('focus', closePlaceMenu, { signal });
 		// Slider: scrub through the time of day (local midnight to midnight) on the date shown.
@@ -771,7 +815,7 @@ const { items } = Astro.props;
 		signal.addEventListener('abort', () => clearInterval(timeTicker));
 		showTime();
 
-		bindHome({ eye, stage, cards, starTip, zoomReadout, onEgg: () => go('surface') });
+		bindHome({ eye, stage, cards, starTip, zoomBox, zoomReadout, onEgg: () => go('surface') });
 		eye.addEventListener('click', () => go('planet'), { signal });
 		root.querySelector('[data-back]')!.addEventListener('click', back, { signal });
 		document.addEventListener(

@@ -69,6 +69,11 @@ body[data-view='surface'] {
 	overflow: hidden;
 }
 
+/* The night sky is pure black, like the background of the telescope photos it shows (on html, as above). */
+html:has(body[data-view='surface']) {
+	background: #000;
+}
+
 body[data-view='planet'] .site-header,
 body[data-view='planet'] .home-content,
 body[data-view='surface'] .site-header,
