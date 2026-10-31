@@ -2,7 +2,7 @@
 // Each body is a small sphere at its true apparent size, lit from the real
 // direction of the Sun, so phases (the Moon's, Venus's crescent) come out right
 // by themselves. Surfaces are painted procedurally in the shader: Jupiter's cloud
-// bands and Great Red Spot, Saturn's bands and rings, Mars's dark regions and
+// bands and Great Red Spot, Saturn's bands, Mars's dark regions and
 // polar caps, the Moon's seas. Planets spin at their real rotation rates.
 //
 // Bodies live on the rotating celestial sphere (cosmos.ts), so setPose takes
@@ -10,6 +10,7 @@
 //
 // Zoomed in far enough, each body swaps its painted surface for a real map
 // (Solar System Scope textures, see src/data/skyImages.ts), loaded on demand.
+// Saturn and Uranus have their rings (RINGS).
 import * as THREE from 'three';
 import type { BodyName } from './ephemeris';
 import { planetMaps } from '../data/skyImages';
@@ -247,8 +248,77 @@ function bodyMaterial(name: BodyName): THREE.ShaderMaterial {
 	});
 }
 
+interface RingSystem {
+	inner: number; // planet radii
+	outer: number;
+	// GLSL setting density (0-1) and color for a point r planet radii out (fw: r's
+	// change across a pixel; theta: the angle around the planet).
+	glsl: string;
+}
+
+// A ring w planet radii wide at radius at, of the given density: drawn at least
+// MIN_RING_PX across, with its density spread to match, so rings far thinner than a
+// pixel still show as faint lines rather than flickering in and out.
+const RING_GLSL = /* glsl */ `
+	const float MIN_RING_PX = 0.6;
+	float ring(float r, float at, float w, float density, float fw) {
+		float drawn = max(w, fw * MIN_RING_PX);
+		float half_ = max(drawn * 0.5, fw * 0.5);
+		float cover = 1.0 - smoothstep(half_ - fw * 0.5, half_ + fw * 0.5, abs(r - at));
+		return cover * density * min(1.0, drawn / (2.0 * half_));
+	}
+`;
+
+const RINGS: Partial<Record<BodyName, RingSystem>> = {
+	// The C, B and A rings, with the Cassini division between B and A.
+	Saturn: {
+		inner: 1.24,
+		outer: 2.27,
+		glsl: /* glsl */ `
+			density =
+				0.25 * step(1.24, r) * step(r, 1.53) + // C ring
+				0.9 * step(1.53, r) * step(r, 1.95) + // B ring (then the Cassini division, 1.95-2.03)
+				0.6 * step(2.03, r) * step(r, 2.27); // A ring
+			density *= 0.85 + 0.15 * sin(r * 90.0); // ringlets
+			color = vec3(0.9, 0.82, 0.66);
+		`,
+	},
+	// Uranus's rings (Voyager 2 and stellar occultations; imaged by JWST and Keck): nine
+	// narrow, dark rings a few kilometers wide, then the brightest, ε, which is
+	// eccentric (narrowest, about 20 km, nearest the planet; about 96 km farthest),
+	// and two faint dusty outer rings, the reddish ν and the bluish μ. Radii and
+	// widths in planet radii (25,559 km); the narrow rings' widths are kept true, so
+	// they show as faint lines until zoomed far in.
+	Uranus: {
+		inner: 1.6,
+		outer: 4.1,
+		glsl: /* glsl */ `
+			float narrow =
+				ring(r, 1.6369, 0.00007, 0.5, fw) + // 6
+				ring(r, 1.6524, 0.00013, 0.5, fw) + // 5
+				ring(r, 1.6656, 0.00013, 0.5, fw) + // 4
+				ring(r, 1.7496, 0.00029, 0.6, fw) + // α
+				ring(r, 1.7865, 0.00034, 0.6, fw) + // β
+				ring(r, 1.8457, 0.00009, 0.5, fw) + // η
+				ring(r, 1.8457, 0.0022, 0.03, fw) + // η's broad dusty skirt
+				ring(r, 1.8635, 0.00016, 0.6, fw) + // γ
+				ring(r, 1.8898, 0.0002, 0.6, fw) + // δ
+				ring(r, 1.9572, 0.00006, 0.3, fw); // λ
+			// ε: an ellipse (eccentricity 0.008), narrowest at its closest to the planet.
+			float far = 0.5 - 0.5 * cos(theta);
+			float epsilon = ring(r, 2.0012 * (1.0 - 0.0079 * cos(theta)), mix(0.00078, 0.0038, far), 0.95, fw);
+			// The dusty outer rings, faint and colored: ν reddish, μ bluish.
+			float nu = 0.04 * exp(-pow((r - 2.66) / 0.05, 2.0));
+			float mu = 0.035 * exp(-pow((r - 3.8) / 0.2, 2.0));
+			density = min(1.0, narrow + epsilon) + nu + mu;
+			// Dark gray: they reflect only a few percent of the light that falls on them.
+			color = (vec3(0.62, 0.63, 0.66) * min(1.0, narrow + epsilon) + vec3(0.75, 0.55, 0.48) * nu + vec3(0.5, 0.66, 0.95) * mu) / max(density, 1e-4);
+		`,
+	},
+};
+
 /**
- * Saturn's rings: C, B and A rings with the Cassini division. Whether the planet
+ * A planet's rings (RINGS). Whether the planet
  * hides a bit of ring, and whether its shadow falls on it, is worked out exactly
  * per pixel rather than with the depth buffer, which can't resolve something
  * this small this far away and would leave flecks where the rings cross the
@@ -257,7 +327,7 @@ function bodyMaterial(name: BodyName): THREE.ShaderMaterial {
  * sphere: the ring point is only a couple of radii from the center there, so the
  * numbers stay small and precise.
  */
-function ringMaterial(flattening: number): THREE.ShaderMaterial {
+function ringMaterial(system: RingSystem, flattening: number): THREE.ShaderMaterial {
 	return new THREE.ShaderMaterial({
 		transparent: true,
 		side: THREE.DoubleSide,
@@ -289,6 +359,7 @@ function ringMaterial(flattening: number): THREE.ShaderMaterial {
 			uniform vec3 uSquash;
 			varying vec2 vRing;
 			varying vec3 vToViewer;
+			${RING_GLSL}
 			// Does a ray from a (in unit-sphere space) along direction d hit the planet?
 			bool hitsPlanet(vec3 a, vec3 d) {
 				float qa = dot(d, d);
@@ -304,17 +375,17 @@ function ringMaterial(flattening: number): THREE.ShaderMaterial {
 				vec3 toViewer = (uToLocal * normalize(vToViewer)) * uSquash;
 				if (hitsPlanet(here, toViewer)) discard; // the planet is between us and this bit of ring
 				float r = length(vRing);
-				float density =
-					0.25 * step(1.24, r) * step(r, 1.53) + // C ring
-					0.9 * step(1.53, r) * step(r, 1.95) + // B ring (then the Cassini division, 1.95-2.03)
-					0.6 * step(2.03, r) * step(r, 2.27); // A ring
-				density *= 0.85 + 0.15 * sin(r * 90.0); // ringlets
+				float fw = max(fwidth(r), 1e-7);
+				float theta = atan(vRing.y, vRing.x);
+				float density;
+				vec3 color;
+				${system.glsl}
 				// Lit face toward us, or seeing the rings' shadowed side.
 				float sameSide = sign(dot(uNormal, uSun)) * sign(dot(uNormal, vToViewer));
 				float lit = sameSide > 0.0 ? 1.0 : 0.35;
 				// The planet's shadow falling across the rings.
 				float shadow = hitsPlanet(here, (uToLocal * uSun) * uSquash) ? 0.2 : 1.0;
-				gl_FragColor = vec4(vec3(0.9, 0.82, 0.66) * lit * shadow, density * uOpacity);
+				gl_FragColor = vec4(color * lit * shadow, density * uOpacity);
 				#include <colorspace_fragment>
 			}
 		`,
@@ -382,9 +453,10 @@ export function createBodyVisual(name: BodyName): BodyVisual {
 
 	let rings: THREE.ShaderMaterial | null = null;
 	let ring: THREE.Mesh | null = null;
-	if (name === 'Saturn') {
-		rings = ringMaterial(FLATTENING.Saturn!);
-		ring = new THREE.Mesh(new THREE.RingGeometry(1.24, 2.27, 256, 1), rings);
+	const ringSystem = RINGS[name];
+	if (ringSystem) {
+		rings = ringMaterial(ringSystem, FLATTENING[name] ?? 0);
+		ring = new THREE.Mesh(new THREE.RingGeometry(ringSystem.inner, ringSystem.outer, 256, 1), rings);
 		ring.rotation.x = -Math.PI / 2; // RingGeometry lies in XY; the rings lie in the equator (XZ)
 		ring.renderOrder = 2;
 		object.add(ring);

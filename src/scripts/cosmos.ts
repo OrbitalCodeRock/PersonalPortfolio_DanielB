@@ -21,6 +21,7 @@ import {
 	useLocationIfAllowed,
 } from './sky';
 import { bodySphere, createBodyVisual, prewarmBodies, type BodyVisual } from './skyBodies';
+import { hasWeather } from './skyWeather';
 import { isGalileanMoon, solarSystem, type BodyName } from './ephemeris';
 import { constellations, looseStars, type SkyStar } from '../data/constellations';
 import { deepSky } from '../data/deepSky';
@@ -227,11 +228,15 @@ interface SkyItem {
 	point?: { sizes: THREE.BufferAttribute; index: number; size: number }; // stars: their point of light, to hide behind the simulation
 }
 
-/** A short credit line for the hover tip ("Image: NASA, ESA · Public domain"); the credits page has the full text. */
-function creditLine(c: ImageCredit | undefined): string | undefined {
+/**
+ * A short credit line for the hover tip ("Image: NASA, ESA · Public domain"); the
+ * credits page has the full text. kind names what's shown ("Image", "Map"); an
+ * adapted one (a planet map that's graded and animated) says so.
+ */
+function creditLine(c: ImageCredit | undefined, kind = 'Image', adapted = false): string | undefined {
 	if (!c) return undefined;
 	const artist = c.artist.length > 60 ? `${c.artist.slice(0, 57).trimEnd()}…` : c.artist;
-	return `Image: ${artist} · ${c.license}`;
+	return `${kind}: ${artist}${adapted ? ', adapted' : ''} · ${c.license}`;
 }
 let skyItems: SkyItem[] = [];
 // Each constellation fades in once fully risen and out as it starts to set.
@@ -1931,7 +1936,7 @@ function updateBodies(now: Date) {
 				? `Moon · ${(Math.round((b.distance * KM_PER_AU) / 100) * 100).toLocaleString('en-US')} km · ${Math.round(b.litFraction * 100)}% lit`
 				: `${b.name} · ${b.distance.toFixed(b.distance < 2 ? 2 : 1)} AU (${lightTime(b.distance)})`;
 		item.detail = entry.visual.showingMap()
-			? creditLine(planetMaps[b.name])
+			? creditLine(planetMaps[b.name], 'Map', hasWeather(b.name))
 			: b.magnitude > NAKED_EYE_LIMIT
 				? `magnitude ${b.magnitude.toFixed(1)} · zoom in to see it`
 				: undefined;

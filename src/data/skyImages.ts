@@ -339,13 +339,6 @@ export const cometImages: Record<string, ImageCredit & { small: string; large: s
 		"license": "CC BY-SA 3.0",
 		"source": "https://commons.wikimedia.org/wiki/File:Hyakutake_Color.jpg"
 	},
-	"tsuchinshan-atlas": {
-		"small": "/sky/comets/tsuchinshan-atlas-512.jpg",
-		"large": "/sky/comets/tsuchinshan-atlas-1280.jpg",
-		"artist": "Jim Vajda",
-		"license": "CC BY 2.0",
-		"source": "https://commons.wikimedia.org/wiki/File:Comet_Tsuchinshan%E2%80%93ATLAS_over_Ohio_(Composite).jpg"
-	},
 	"pons-brooks": {
 		"small": "/sky/comets/pons-brooks-512.jpg",
 		"large": "/sky/comets/pons-brooks-1280.jpg",
