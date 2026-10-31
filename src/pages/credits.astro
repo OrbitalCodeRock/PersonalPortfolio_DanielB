@@ -15,7 +15,7 @@ const cometRows = comets
 	.filter((c) => cometImages[c.id])
 	.map((c) => ({ name: `${c.name} (${c.designation})`, credit: cometImages[c.id] }));
 const sections = [
-	{ title: 'Moon and planets', intro: 'Surface maps wrapped onto the globes once they are big enough on screen.', rows: planets },
+	{ title: 'Sun, Moon, planets and smaller worlds', intro: 'Surface maps wrapped onto the globes once they are big enough on screen.', rows: planets },
 	{ title: 'Galaxies, nebulae and star clusters', intro: 'Photos shown in place of the drawn images when you zoom in.', rows: deep },
 	{ title: 'Comets', intro: "Photos laid along a comet's drawn tail when you zoom in on it.", rows: cometRows },
 ];

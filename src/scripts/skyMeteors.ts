@@ -1,15 +1,19 @@
 // Meteor showers in the sky view (cosmos.ts): while a shower is active, a faint
 // ring marks its radiant and meteors streak out of it, each a short bright line
 // that runs away from the radiant and fades. Real rates are low (a few to about a
-// hundred an hour at best), so they're shown sped up by METEOR_SPEEDUP to be seen
-// in a short visit; stronger showers still show more, and fewer fall while the
-// radiant is low, as in the real sky.
+// hundred an hour at best), so at real time they're shown METEOR_SPEEDUP times as
+// often, to be seen in a short visit. They follow the sky's clock: run it faster
+// and more fall (up to MAX_PER_SECOND), pause it and none do (any in flight hold
+// still). Stronger showers show more, and fewer fall while the radiant is low, as
+// in the real sky.
 import * as THREE from 'three';
 import { meteorShowers, type MeteorShower } from '../data/meteorShowers';
 import { showerActivity, type ShowerActivity } from './meteors';
 import { equatorialVector } from './sky';
 
 export const METEOR_SPEEDUP = 100;
+// However fast the clock runs, at most this many new meteors a second, so the sky stays readable.
+const MAX_PER_SECOND = 6;
 const POOL = 32; // meteors on screen at once, at most
 const RAD = Math.PI / 180;
 
@@ -25,10 +29,11 @@ export interface MeteorShowers {
 	object: THREE.Group; // add it to the celestial sphere group
 	showers: { shower: MeteorShower; radiant: THREE.Vector3; activity: ShowerActivity }[];
 	/**
-	 * Each frame: update which showers are active and move the meteors. sinAlt gives
-	 * how high a celestial-frame direction is (sine of its altitude).
+	 * Each frame: update which showers are active and move the meteors. dt is real
+	 * seconds; rate is how fast the sky's clock runs (simulated seconds per real
+	 * second, 0 = paused). sinAlt gives how high a celestial-frame direction is.
 	 */
-	update(date: Date, dt: number, opacity: number, sinAlt: (dir: THREE.Vector3) => number): void;
+	update(date: Date, dt: number, rate: number, opacity: number, sinAlt: (dir: THREE.Vector3) => number): void;
 }
 
 function ringTexture(): THREE.Texture {
@@ -105,7 +110,7 @@ export function createMeteorShowers(distance: number): MeteorShowers {
 	return {
 		object,
 		showers,
-		update(date, dt, opacity, sinAlt) {
+		update(date, dt, rate, opacity, sinAlt) {
 			// Activity changes slowly: recheck about once a second.
 			if (performance.now() - lastCheck > 1000) {
 				lastCheck = performance.now();
@@ -117,13 +122,14 @@ export function createMeteorShowers(distance: number): MeteorShowers {
 				(s.marker.material as THREE.PointsMaterial).opacity = up ? opacity * 0.5 : 0;
 				if (!up || opacity <= 0) continue;
 				// Fewer meteors while the radiant is low (half of them would come from below the horizon).
-				const perSecond = (s.activity.rate / 3600) * height * METEOR_SPEEDUP;
+				const simulated = (s.activity.rate / 3600) * height * Math.abs(rate); // meteors per real second, for real
+				const perSecond = Math.min(MAX_PER_SECOND, simulated * METEOR_SPEEDUP);
 				if (Math.random() < perSecond * dt) launch(s.radiant, s.shower.speed, sinAlt);
 			}
 			meteors.forEach((m, i) => {
 				let fade = 0;
 				if (m) {
-					m.age += dt;
+					if (rate !== 0) m.age += dt; // paused: hold still
 					const p = m.age / m.duration;
 					if (p >= 1) meteors[i] = null;
 					else {

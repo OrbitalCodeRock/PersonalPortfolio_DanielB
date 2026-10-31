@@ -161,6 +161,16 @@ export const BODY_POLES: Record<BodyName, [number, number]> = {
 	Saturn: [40.59, 83.54],
 	Uranus: [257.31, -15.18],
 	Neptune: [299.36, 43.46],
+	Sun: [286.13, 63.87],
+	Pluto: [132.99, -6.16],
+	Ceres: [291.42, 66.76],
+	Vesta: [309.03, 42.23],
+	Eris: [270.0, 66.56], // unknown: assume upright to the ecliptic
+	// Jupiter's moons orbit in its equator, so share its pole.
+	Io: [268.05, 64.5],
+	Europa: [268.08, 64.51],
+	Ganymede: [268.2, 64.57],
+	Callisto: [268.72, 64.83],
 };
 
 // ---------------------------------------------------------------------------
@@ -171,18 +181,28 @@ const SPEEDS = [-604800, -86400, -21600, -3600, -600, -60, -1, 1, 60, 600, 3600,
 const REAL_TIME = SPEEDS.indexOf(1);
 let speedIndex = REAL_TIME;
 let paused = false;
+// The real clock, smooth and sub-millisecond (performance.now), held at one reading per
+// animation frame (holdClock) so everything drawn in a frame is at the same moment and
+// the sky moves by even steps: at a week per second, a millisecond is ten minutes.
+let frameClock: number | null = null;
+const realNow = () => frameClock ?? performance.now();
 // The simulated time was clockSim when the real clock read clockReal.
-let clockReal = Date.now();
-let clockSim = clockReal;
+let clockReal = realNow();
+let clockSim = Date.now();
 
 function simulatedMs(): number {
-	return paused ? clockSim : clockSim + (Date.now() - clockReal) * SPEEDS[speedIndex];
+	return paused ? clockSim : clockSim + (realNow() - clockReal) * SPEEDS[speedIndex];
 }
 
 /** Restart the clock's reference point from the current simulated time (before changing speed). */
 function rebase() {
 	clockSim = simulatedMs();
-	clockReal = Date.now();
+	clockReal = realNow();
+}
+
+/** Called at the start of each animation frame with performance.now(): the sky's time for that frame. */
+export function holdClock(now: number) {
+	frameClock = now;
 }
 
 /** The sky view's current (simulated) moment. */
@@ -205,17 +225,23 @@ export function togglePause() {
 /** Jump to a moment (ms since 1970), keeping the current speed and pause state. */
 export function setSkyTime(ms: number) {
 	clockSim = ms;
-	clockReal = Date.now();
+	clockReal = realNow();
 }
 
 /** Back to the present, at real-time speed. */
 export function resetClock() {
-	clockReal = clockSim = Date.now();
+	clockSim = Date.now();
+	clockReal = realNow();
 	speedIndex = REAL_TIME;
 	paused = false;
 }
 
 /** What the time controls show: the speed in words, and whether we're at the live present. */
+/** How fast simulated time runs: simulated seconds per real second (negative = backward, 0 = paused). */
+export function clockRate(): number {
+	return paused ? 0 : SPEEDS[speedIndex];
+}
+
 export function clockState(): { speed: string; backward: boolean; paused: boolean; live: boolean } {
 	const speed = SPEEDS[speedIndex];
 	const size = Math.abs(speed);

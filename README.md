@@ -23,6 +23,6 @@ Deployed on Cloudflare Workers (static assets, see `wrangler.jsonc`) from the `m
 
 The sky view shows real planet maps, deep-sky photos and comet photos once you zoom in. They live in `public/sky/`,
 resized and recompressed for the web, and are used under their own licenses (CC BY, CC BY-SA, CC0 or
-public domain; NASA, ESA, ESO, Solar System Scope and individual astrophotographers via Wikimedia Commons).
+public domain; NASA, ESA, ESO, USGS, Solar System Scope and individual astrophotographers via Wikimedia Commons).
 Each image's author, license and source link is in `src/data/skyImages.ts` and listed on the site at
 `/credits`, which the sky view links to from its location menu. Any image added there needs the same.

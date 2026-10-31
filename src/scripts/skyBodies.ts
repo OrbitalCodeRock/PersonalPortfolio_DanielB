@@ -28,6 +28,11 @@ export interface BodyVisual {
 	showingMap(): boolean;
 }
 
+// A globe visibly turns at most this many times a second (real time). With the clock
+// sped up, Jupiter would otherwise spin many times a frame and its surface would only
+// strobe; past this it turns at this steady rate (the right way round) instead.
+const MAX_SPIN_PER_SECOND = 0.25;
+
 // Load a body's real map once its disk is this many pixels across.
 const MAP_LOAD_PX = 48;
 
@@ -42,6 +47,16 @@ const SPIN_HOURS: Record<BodyName, number> = {
 	Saturn: 10.656,
 	Uranus: -17.24,
 	Neptune: 16.11,
+	Sun: 609.12,
+	Pluto: -153.29,
+	Ceres: 9.074,
+	Vesta: 5.342,
+	Eris: 378.9,
+	// Jupiter's moons keep one face toward Jupiter: they turn once per orbit.
+	Io: 42.459,
+	Europa: 85.228,
+	Ganymede: 171.709,
+	Callisto: 400.536,
 };
 const FLATTENING: Partial<Record<BodyName, number>> = { Jupiter: 0.065, Saturn: 0.098, Uranus: 0.023, Neptune: 0.017 };
 
@@ -118,10 +133,52 @@ const SURFACES: Record<BodyName, string> = {
 		float spot = 1.0 - smoothstep(0.08, 0.12, length(vec2(atan(p.z, p.x) * cos(lat) - 0.6, (lat + 0.35) * 2.0)));
 		return mix(col, vec3(0.14, 0.24, 0.55), spot);
 	`,
+	Sun: /* glsl */ `
+		// Granulation, and a few dark sunspots near the equator.
+		vec3 col = vec3(1.0, 0.8, 0.45) * (0.82 + 0.3 * fbm(p * 40.0));
+		float spots = smoothstep(0.72, 0.76, fbm(p * 6.0 + 11.0)) * (1.0 - smoothstep(0.2, 0.5, abs(p.y)));
+		return mix(col, vec3(0.35, 0.18, 0.06), spots);
+	`,
+	Pluto: /* glsl */ `
+		// Tan and peach, a bright nitrogen-ice plain, and dark reddish equatorial patches.
+		vec3 col = mix(vec3(0.72, 0.58, 0.48), vec3(0.93, 0.88, 0.83), smoothstep(0.55, 0.65, fbm(p * 2.5 + 3.0)));
+		float dark = smoothstep(0.5, 0.6, fbm(p * 3.0 + 9.0)) * (1.0 - smoothstep(0.1, 0.4, abs(p.y)));
+		return mix(col, vec3(0.35, 0.18, 0.12), dark);
+	`,
+	Ceres: /* glsl */ `
+		return vec3(0.42) * (0.78 + 0.4 * fbm(p * 12.0));
+	`,
+	Vesta: /* glsl */ `
+		return vec3(0.56, 0.53, 0.49) * (0.72 + 0.5 * fbm(p * 8.0));
+	`,
+	Eris: /* glsl */ `
+		// One of the most reflective bodies known: frost all over.
+		return vec3(0.95, 0.94, 0.92) * (0.93 + 0.1 * fbm(p * 5.0));
+	`,
+	Io: /* glsl */ `
+		// Sulfur yellows and oranges, dark volcanic spots, white frost.
+		vec3 col = mix(vec3(0.93, 0.83, 0.45), vec3(0.85, 0.55, 0.28), smoothstep(0.4, 0.65, fbm(p * 4.0)));
+		col = mix(col, vec3(0.95, 0.93, 0.85), smoothstep(0.62, 0.7, fbm(p * 6.0 + 5.0)));
+		return mix(col, vec3(0.25, 0.14, 0.08), smoothstep(0.7, 0.74, fbm(p * 12.0 + 2.0)));
+	`,
+	Europa: /* glsl */ `
+		// Bright ice crossed by reddish-brown cracks.
+		float cracks = 1.0 - smoothstep(0.0, 0.05, abs(sin(dot(p, vec3(9.0, 5.0, 3.0)) + fbm(p * 3.0) * 6.0)));
+		return mix(vec3(0.88, 0.86, 0.8), vec3(0.6, 0.42, 0.3), cracks * 0.7);
+	`,
+	Ganymede: /* glsl */ `
+		// Dark old terrain and lighter grooved terrain.
+		return mix(vec3(0.42, 0.39, 0.35), vec3(0.76, 0.73, 0.68), smoothstep(0.45, 0.6, fbm(p * 4.0)));
+	`,
+	Callisto: /* glsl */ `
+		// Dark and heavily cratered, peppered with bright crater rims.
+		return vec3(0.34, 0.31, 0.27) * (0.85 + 0.3 * fbm(p * 10.0)) + vec3(0.45) * smoothstep(0.76, 0.8, fbm(p * 24.0));
+	`,
 };
 
 function bodyMaterial(name: BodyName): THREE.ShaderMaterial {
 	const gasGiant = name === 'Jupiter' || name === 'Saturn' || name === 'Uranus' || name === 'Neptune';
+	const sun = name === 'Sun';
 	return new THREE.ShaderMaterial({
 		transparent: true,
 		uniforms: {
@@ -131,45 +188,53 @@ function bodyMaterial(name: BodyName): THREE.ShaderMaterial {
 			uMapMix: { value: 0 }, // 0 = painted surface, 1 = real map
 		},
 		defines: {
-			LIMB_DARKENING: gasGiant ? '0.6' : '0.2',
+			LIMB_DARKENING: sun ? '0.85' : gasGiant ? '0.6' : '0.2',
 			EARTHSHINE: name === 'Moon' ? '0.04' : '0.0', // the Moon's night side glows faintly
+			EMISSIVE: sun ? '1' : '0', // the Sun makes its own light: no phases or night side
 		},
+		// Everything in view space (modelViewMatrix is worked out on the CPU in double
+		// precision): world coordinates in 32-bit floats can't resolve a disk a fraction
+		// of an arcsecond across, which the telescope can zoom to.
 		vertexShader: /* glsl */ `
+			uniform vec3 uSun;
 			varying vec3 vLocal;
-			varying vec3 vNormalW;
-			varying vec3 vPosW;
+			varying vec3 vNormalV;
+			varying vec3 vViewPos;
+			varying vec3 vSunV;
 			varying vec2 vUv;
 			void main() {
 				vUv = uv;
 				vLocal = normalize(position);
-				vNormalW = normalize(mat3(modelMatrix) * normal);
-				vec4 world = modelMatrix * vec4(position, 1.0);
-				vPosW = world.xyz;
-				gl_Position = projectionMatrix * viewMatrix * world;
+				vNormalV = normalize(normalMatrix * normal);
+				vSunV = normalize(mat3(viewMatrix) * uSun);
+				vec4 viewPos = modelViewMatrix * vec4(position, 1.0);
+				vViewPos = viewPos.xyz;
+				gl_Position = projectionMatrix * viewPos;
 			}
 		`,
 		fragmentShader: /* glsl */ `
-			uniform vec3 uSun;
 			uniform float uOpacity;
 			uniform sampler2D uMap;
 			uniform float uMapMix;
 			varying vec3 vLocal;
-			varying vec3 vNormalW;
-			varying vec3 vPosW;
+			varying vec3 vNormalV;
+			varying vec3 vViewPos;
+			varying vec3 vSunV;
 			varying vec2 vUv;
 			${NOISE}
 			vec3 surface(vec3 p) {
 				${SURFACES[name]}
 			}
 			void main() {
-				vec3 n = normalize(vNormalW);
-				vec3 toViewer = normalize(cameraPosition - vPosW);
-				float light = dot(n, uSun);
+				vec3 n = normalize(vNormalV);
+				vec3 toViewer = normalize(-vViewPos);
+				float light = dot(n, normalize(vSunV));
 				float day = smoothstep(-0.06, 0.1, light); // soft terminator
 				float shade = day * (0.45 + 0.55 * max(light, 0.0));
 				float limb = mix(1.0, pow(max(dot(n, toViewer), 0.0), 0.35), LIMB_DARKENING);
 				vec3 base = surface(vLocal);
 				if (uMapMix > 0.0) base = mix(base, texture2D(uMap, vUv).rgb, uMapMix);
+				if (EMISSIVE > 0) shade = 1.0;
 				gl_FragColor = vec4(base * (shade * limb + EARTHSHINE), uOpacity);
 				#include <colorspace_fragment>
 			}
@@ -202,12 +267,13 @@ function ringMaterial(flattening: number): THREE.ShaderMaterial {
 		},
 		vertexShader: /* glsl */ `
 			varying vec2 vRing; // position in the ring plane, in planet radii
-			varying vec3 vPosW;
+			varying vec3 vToViewer; // world direction toward the viewer
 			void main() {
 				vRing = position.xy;
-				vec4 world = modelMatrix * vec4(position, 1.0);
-				vPosW = world.xyz;
-				gl_Position = projectionMatrix * viewMatrix * world;
+				// In view space, for precision (see bodyMaterial).
+				vec4 viewPos = modelViewMatrix * vec4(position, 1.0);
+				vToViewer = normalize((vec4(-viewPos.xyz, 0.0) * viewMatrix).xyz); // view -> world (inverse rotation)
+				gl_Position = projectionMatrix * viewPos;
 			}
 		`,
 		fragmentShader: /* glsl */ `
@@ -217,7 +283,7 @@ function ringMaterial(flattening: number): THREE.ShaderMaterial {
 			uniform mat3 uToLocal;
 			uniform vec3 uSquash;
 			varying vec2 vRing;
-			varying vec3 vPosW;
+			varying vec3 vToViewer;
 			// Does a ray from a (in unit-sphere space) along direction d hit the planet?
 			bool hitsPlanet(vec3 a, vec3 d) {
 				float qa = dot(d, d);
@@ -230,7 +296,7 @@ function ringMaterial(flattening: number): THREE.ShaderMaterial {
 			void main() {
 				// This ring point in unit-sphere space: the ring lies in the planet's equator (y = 0).
 				vec3 here = vec3(vRing.x, 0.0, -vRing.y);
-				vec3 toViewer = (uToLocal * normalize(cameraPosition - vPosW)) * uSquash;
+				vec3 toViewer = (uToLocal * normalize(vToViewer)) * uSquash;
 				if (hitsPlanet(here, toViewer)) discard; // the planet is between us and this bit of ring
 				float r = length(vRing);
 				float density =
@@ -239,7 +305,7 @@ function ringMaterial(flattening: number): THREE.ShaderMaterial {
 					0.6 * step(2.03, r) * step(r, 2.27); // A ring
 				density *= 0.85 + 0.15 * sin(r * 90.0); // ringlets
 				// Lit face toward us, or seeing the rings' shadowed side.
-				float sameSide = sign(dot(uNormal, uSun)) * sign(dot(uNormal, cameraPosition - vPosW));
+				float sameSide = sign(dot(uNormal, uSun)) * sign(dot(uNormal, vToViewer));
 				float lit = sameSide > 0.0 ? 1.0 : 0.35;
 				// The planet's shadow falling across the rings.
 				float shadow = hitsPlanet(here, (uToLocal * uSun) * uSquash) ? 0.2 : 1.0;
@@ -283,6 +349,8 @@ export function createBodyVisual(name: BodyName): BodyVisual {
 	let mapRequested = false;
 	let mapLoaded = false;
 	let lastUpdate = 0;
+	let lastSimMs: number | null = null;
+	let spin = 0; // the globe's shown turn (radians): the true one, unless that's spinning too fast to see
 
 	return {
 		object,
@@ -316,7 +384,15 @@ export function createBodyVisual(name: BodyName): BodyVisual {
 			const dt = lastUpdate ? Math.min(0.1, (now - lastUpdate) / 1000) : 0;
 			lastUpdate = now;
 			if (mapLoaded) material.uniforms.uMapMix.value = Math.min(1, material.uniforms.uMapMix.value + dt * 2);
-			if (spinHours) sphere.rotation.y = ((simMs / 3.6e6 / spinHours) % 1) * Math.PI * 2;
+			if (spinHours) {
+				const trueSpin = ((simMs / 3.6e6 / spinHours) % 1) * Math.PI * 2;
+				// Turns per real second at the clock's current speed.
+				const rate = lastSimMs !== null && dt > 0 ? (simMs - lastSimMs) / 3.6e6 / spinHours / dt : 0;
+				if (Math.abs(rate) <= MAX_SPIN_PER_SECOND) spin = trueSpin;
+				else spin += Math.sign(rate) * MAX_SPIN_PER_SECOND * Math.PI * 2 * dt;
+				sphere.rotation.y = spin;
+			}
+			lastSimMs = simMs;
 			object.parent?.getWorldQuaternion(parentRotation);
 			const sunWorld = sunLocal.clone().applyQuaternion(parentRotation);
 			material.uniforms.uSun.value.copy(sunWorld);

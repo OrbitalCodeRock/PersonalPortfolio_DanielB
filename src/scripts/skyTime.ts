@@ -1,8 +1,8 @@
 // The sky view's time zone: every time it shows or takes in (the time bar, search
-// results, meteor shower dates) is in this zone. By default it's the viewing
-// location's own zone (preset places carry theirs; typed coordinates get one
-// estimated from longitude); it can also be this device's zone, UTC, or any zone
-// picked from the list. The choice is remembered in this browser.
+// results, meteor shower dates) is in this zone. By default it's this device's
+// zone; it can also follow the viewing location (preset places carry their zones;
+// typed coordinates get one estimated from longitude), be UTC, or any zone picked
+// from the list. The choice is remembered in this browser.
 import { getObserver, type Observer } from './sky';
 
 /** 'location' (the viewing location's zone), 'device' (this browser's), or an IANA zone name. */
@@ -18,7 +18,7 @@ function loadSetting(): ZoneSetting {
 	} catch {
 		// Storage unavailable: use the default.
 	}
-	return 'location';
+	return 'device';
 }
 
 let setting: ZoneSetting = loadSetting();

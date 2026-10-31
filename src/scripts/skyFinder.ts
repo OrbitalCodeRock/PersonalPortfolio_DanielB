@@ -9,7 +9,7 @@ import { constellations, looseStars } from '../data/constellations';
 import { deepSky } from '../data/deepSky';
 import { meteorShowers } from '../data/meteorShowers';
 import { COMET_LIMIT, cometState, visibleWindow } from './comets';
-import { solarSystem, sunRaDec, type BodyName } from './ephemeris';
+import { solarSystem, type BodyName } from './ephemeris';
 import { showerActivity } from './meteors';
 import { formatClock, formatDay, formatMoment, formatMonthYear, skyZone } from './skyTime';
 import { altAz, type Observer } from './sky';
@@ -62,6 +62,13 @@ const ALIASES: Record<string, string> = {
 	LMC: 'magellanic',
 	SMC: 'magellanic',
 	Moon: 'luna',
+	Sun: 'sol star',
+	Ceres: 'asteroid',
+	Vesta: 'asteroid 4',
+	Io: 'galilean jupiter moon',
+	Europa: 'galilean jupiter moon',
+	Ganymede: 'galilean jupiter moon',
+	Callisto: 'galilean jupiter moon',
 	Sirius: 'dog star',
 	Crux: 'southern cross',
 	Sagittarius: 'teapot',
@@ -85,10 +92,10 @@ const ALIASES: Record<string, string> = {
 
 // Well-known objects the simulation doesn't include, so searching for them explains why nothing shows.
 const NOT_INCLUDED: [string, string][] = [
-	['Sun', 'Star'],
-	['Pluto', 'Dwarf planet'],
-	['Ceres', 'Dwarf planet'],
-	['Eris', 'Dwarf planet'],
+	['Charon', "Pluto's moon"],
+	['Titan', "Saturn's moon"],
+	['Haumea', 'Dwarf planet'],
+	['Makemake', 'Dwarf planet'],
 	['International Space Station', 'Satellite'],
 	['Hubble Space Telescope', 'Satellite'],
 	['Comet Shoemaker–Levy 9', 'Comet (hit Jupiter in 1994)'],
@@ -120,6 +127,15 @@ const BODY_KINDS: Record<BodyName, string> = {
 	Saturn: 'Planet',
 	Uranus: 'Planet',
 	Neptune: 'Planet',
+	Sun: 'Our star',
+	Pluto: 'Dwarf planet',
+	Ceres: 'Dwarf planet, the largest asteroid',
+	Vesta: 'Asteroid',
+	Eris: 'Dwarf planet',
+	Io: 'Moon of Jupiter',
+	Europa: 'Moon of Jupiter',
+	Ganymede: 'Moon of Jupiter',
+	Callisto: 'Moon of Jupiter',
 };
 
 /** The center of a group of stars on the sky (average of their directions). */
@@ -295,7 +311,7 @@ export interface Visibility {
 	alt: number;
 	az: number;
 	text: string; // "Visible now · 34° up in the SE · sets around 3:10 AM"
-	/** When not in view: a good moment to see it (dark sky, up high), to jump the clock to. */
+	/** When not in view: a good moment to see it (up high), to jump the clock to. */
 	goTo?: Date;
 	goToPast?: boolean; // that moment is in the past (a comet that isn't coming back soon)
 }
@@ -303,13 +319,6 @@ export interface Visibility {
 const STEP_MS = 10 * 60 * 1000; // rise and set times to the nearest ten minutes
 const DAY_MS = 24 * 60 * 60 * 1000;
 const SIGHTING_STEP_MS = 20 * 60 * 1000;
-const DARK = (-8 * Math.PI) / 180; // the Sun this far below the horizon: dark enough to see
-const CLEAR = (10 * Math.PI) / 180; // high enough to see well, clear of trees and haze
-
-function isDark(obs: Observer, date: Date): boolean {
-	const sun = sunRaDec(date);
-	return altAz(sun.ra, sun.dec, obs, date).alt < DARK;
-}
 
 const sightingCache = new Map<string, Sighting | null>();
 
@@ -320,24 +329,25 @@ interface Sighting {
 }
 
 /**
- * The first moment from `from` (until `to`) when the entry is on show with the Sun
- * well down and it at least `minAlt` up, and the best moment that same night (when
- * it's highest).
+ * The first moment from `from` (until `to`) when the entry is on show, and the
+ * best moment while it stays up (when it's highest). The sky view has no
+ * atmosphere: the Sun doesn't light up the sky and nothing is lost in haze, so
+ * anything above the horizon can be seen, day or night.
  */
-function nextSighting(entry: FinderEntry, obs: Observer, from: Date, to: Date, minAlt = CLEAR): Sighting | null {
+function nextSighting(entry: FinderEntry, obs: Observer, from: Date, to: Date): Sighting | null {
 	// The zone matters for meteor showers, whose dates start at local midnight.
-	const cacheKey = `${entry.key}|${obs.lat},${obs.lon}|${skyZone()}|${Math.floor(from.getTime() / SIGHTING_STEP_MS)}|${Math.floor(to.getTime() / DAY_MS)}|${minAlt}`;
+	const cacheKey = `${entry.key}|${obs.lat},${obs.lon}|${skyZone()}|${Math.floor(from.getTime() / SIGHTING_STEP_MS)}|${Math.floor(to.getTime() / DAY_MS)}`;
 	if (sightingCache.has(cacheKey)) return sightingCache.get(cacheKey)!;
 	const visible = (t: number) => {
 		const date = new Date(t);
 		const place = entryAltAz(entry, obs, date);
-		// Cheapest checks first: above the horizon, then dark, then everything else.
-		return !!place && place.alt > minAlt && isDark(obs, date) && shownAt(entry, obs, date) ? place.alt : null;
+		// Cheapest check first: above the horizon, then everything else.
+		return !!place && place.alt > 0 && shownAt(entry, obs, date) ? place.alt : null;
 	};
 	let result: Sighting | null = null;
 	for (let t = from.getTime(); t <= to.getTime(); t += SIGHTING_STEP_MS) {
 		if (visible(t) === null) continue;
-		// Found: now the highest point during the rest of this stretch of darkness.
+		// Found: now the highest point while it stays up.
 		let best = t;
 		let bestAlt = -Infinity;
 		for (let u = t; u < t + 14 * 3600 * 1000; u += SIGHTING_STEP_MS) {
@@ -358,8 +368,8 @@ function nextSighting(entry: FinderEntry, obs: Observer, from: Date, to: Date, m
 
 /**
  * Whether an included entry is in view now, where, and when that next changes:
- * setting within the day if it's up, or its next sighting (a dark sky with it
- * above the horizon, and bright or active enough to see) if not.
+ * setting within the day if it's up, or its next sighting (above the horizon, and
+ * bright or active enough to see) if not.
  */
 export function visibility(entry: FinderEntry, obs: Observer, date: Date): Visibility | null {
 	const place = entryAltAz(entry, obs, date);
@@ -394,11 +404,10 @@ export function visibility(entry: FinderEntry, obs: Observer, date: Date): Visib
 	const first: Season | null = entry.season ? entry.season(date) : { from: date, to: new Date(date.getTime() + 400 * DAY_MS) };
 	if (!first) return { ...base, text: `${reason} · not bright enough to see in the coming years` };
 	let season: Season = first;
-	// Somewhere it gets well clear of the horizon; failing that, anywhere it's up at all.
-	const sightingIn = (s: Season) => nextSighting(entry, obs, s.from, s.to) ?? nextSighting(entry, obs, s.from, s.to, 0);
+	const sightingIn = (s: Season) => nextSighting(entry, obs, s.from, s.to);
 	let sighting = sightingIn(season);
-	// A comet visit or shower that can't be seen from here (too near the Sun, or below
-	// the horizon all night): try the next ones.
+	// A comet visit or shower that can't be seen from here (below the horizon the
+	// whole time): try the next ones.
 	for (let tries = 0; !sighting && entry.season && !season.past && tries < 3; tries++) {
 		const next = entry.season(new Date(season.to.getTime() + DAY_MS));
 		if (!next || next.past) break;
@@ -410,19 +419,17 @@ export function visibility(entry: FinderEntry, obs: Observer, date: Date): Visib
 		return { ...base, text: `${reason} · ${season.past ?? never}` };
 	}
 	if (season.past) {
-		// A past visit: rather than its first night, the night it looked best in a dark
-		// sky: brightest, counting a low one as dimmer (seen through more air).
-		const score = (night: Sighting) => entry.rank!(night.best) + Math.max(0, (CLEAR * 2 - night.bestAlt) / CLEAR) * 1.5;
+		// A past visit: rather than its first day up, the day it was brightest.
 		let best = sighting.best;
 		if (entry.rank) {
-			let bestRank = score(sighting);
+			let bestRank = entry.rank(best);
 			for (let t = sighting.first.getTime() + DAY_MS; t <= season.to.getTime(); t += 2 * DAY_MS) {
-				const night = nextSighting(entry, obs, new Date(t - DAY_MS / 2), new Date(t + DAY_MS / 2), 0);
-				if (!night) continue;
-				const rank = score(night);
+				const day = nextSighting(entry, obs, new Date(t - DAY_MS / 2), new Date(t + DAY_MS / 2));
+				if (!day) continue;
+				const rank = entry.rank(day.best);
 				if (rank < bestRank) {
 					bestRank = rank;
-					best = night.best;
+					best = day.best;
 				}
 			}
 		}

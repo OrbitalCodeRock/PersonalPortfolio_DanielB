@@ -16,10 +16,12 @@ import {
 	getObserver,
 	siderealAngle,
 	skyNow,
+	clockRate,
+	holdClock,
 	useLocationIfAllowed,
 } from './sky';
 import { createBodyVisual, type BodyVisual } from './skyBodies';
-import { solarSystem, type BodyName } from './ephemeris';
+import { isGalileanMoon, solarSystem, type BodyName } from './ephemeris';
 import { constellations, looseStars, type SkyStar } from '../data/constellations';
 import { deepSky } from '../data/deepSky';
 import { deepSkyTexture } from './deepSkyArt';
@@ -30,6 +32,7 @@ import { cometState, COMET_LIMIT } from './comets';
 import { createCometVisual, type CometVisual } from './skyComets';
 import { cometImages } from '../data/skyImages';
 import { createMeteorShowers, METEOR_SPEEDUP, type MeteorShowers } from './skyMeteors';
+import { entryAltAz, findEntry } from './skyFinder';
 import { shortDate } from './meteors';
 
 // inside is the page background after diving into the planet (see reset()).
@@ -41,6 +44,7 @@ export interface HomeBinding {
 	cards: HTMLElement[];
 	starTip: HTMLElement; // shows a star's name in the sky view
 	zoomBox: HTMLElement; // holds the magnification and the zoom-out button; shown once zoomed in
+	followNote: HTMLElement; // "following it below the horizon" note; its [data-follow-text] gets the words
 	zoomReadout: HTMLElement; // telescope magnification in the sky view
 	onEgg: () => void;
 }
@@ -79,7 +83,8 @@ const GROUND_GRID_OPACITY = 0.35;
 const DRAG_THRESHOLD = 6;
 const ORBIT_FOV = 60;
 const PLANET_FOV = 55;
-// Sky view zoom: fitted to the constellation on show (see buildSky), within these bounds.
+// Sky view zoom on arrival: fitted to the constellation on show (see buildSky), within
+// these bounds, before easing all the way out (easeOutToWideView).
 const SURFACE_FOV_MIN = 35;
 const SURFACE_FOV_MAX = 80;
 // How much of the view's height the constellation should fill.
@@ -87,6 +92,12 @@ const SKY_FILL = 0.6;
 // How far the scroll wheel can zoom the sky view (field of view in degrees; smaller =
 // closer). 0.01° is deep enough to frame Jupiter (about 45 arcseconds across).
 const SKY_ZOOM_MIN = 0.01;
+// Locked onto something with a disk, the telescope can zoom much further, until the
+// disk is about twice the height of the view (degrees; small enough for Eris). Only
+// then: drawn in view space, disks stay sharp at that scale, but points (stars) are
+// placed in 32-bit world coordinates, good to about 0.02 arcseconds, and would
+// visibly wander in a view that narrow.
+const SKY_ZOOM_DEEP = 1e-5;
 const SKY_ZOOM_MAX = 90;
 // The naked eye's field of view, for the telescope's magnification readout.
 const NAKED_EYE_FOV = 60;
@@ -94,8 +105,28 @@ const NAKED_EYE_FOV = 60;
 const STAR_DETAIL_ZOOM = [4, 16];
 // Highest the sky view can tilt (radians; just short of straight up).
 const SKY_PITCH_MAX = 1.55;
-// Point-of-light color for each planet when it is too small to see as a disk.
+// Telescope drive: zoomed in past the first of these fields of view (degrees), the view
+// starts turning with the stars, as a telescope's motor drive does, and fully by the
+// second; wider views stay put with the ground while the sky wheels past.
+const DRIVE_FOV = [25, 10];
+// Star-field motion on screen per frame (pixels) at which the background (stars,
+// constellation lines, galaxies, comets) starts to fade, and is gone: past that it
+// only strobes. Measured from the clock's motion, not from looking around.
+const STROBE_PX = [30, 140];
+// Lowest the sky view tilts while looking around (radians below the horizon). Following
+// something that has set, it can tilt all the way down (-SKY_PITCH_MAX).
+const SKY_PITCH_MIN = -0.35;
+// Point-of-light color for each body when it is too small to see as a disk.
 const PLANET_GLOW: Record<Exclude<BodyName, 'Moon'>, number> = {
+	Sun: 0xfff4d6,
+	Pluto: 0xe8d8c8,
+	Ceres: 0xd8d8d8,
+	Vesta: 0xe4e0d8,
+	Eris: 0xf2f2f2,
+	Io: 0xfff0b8,
+	Europa: 0xf4efe6,
+	Ganymede: 0xe6e0d8,
+	Callisto: 0xd4ccc0,
 	Mercury: 0xe0d8cc,
 	Venus: 0xfff6dc,
 	Mars: 0xffa07a,
@@ -182,6 +213,7 @@ interface SkyItem {
 	hoverable: boolean; // up, and part of what's on show
 	detail?: string; // a second line under the name: a star's type, or an image credit while a real image shows
 	focusFov?: number; // field of view (degrees) to frame it when locking on, for things without a disk
+	up?: boolean; // above the horizon, for things that can be up yet too faint to hover (the telescope can still lock on)
 }
 
 /** A short credit line for the hover tip ("Image: NASA, ESA · Public domain"); the credits page has the full text. */
@@ -237,6 +269,16 @@ let trackedItem: SkyItem | null = null; // a body the telescope is following
 let trackLock = 0;
 let pressedBody: SkyItem | null = null; // the body under the pointer when it was pressed
 let autoZoomOut = false; // zooming back out at AUTO_ZOOM_OUT_RATE; any manual zoom stops it
+// 1 while following something whose path would bring the horizon into view (see
+// groundWouldShow): the ground isn't drawn at all, hidden at once rather than faded.
+// Back toward 0 (the ground fading back in, out of view) once that stops.
+let groundHidden = 0;
+// The view's center on the celestial sphere at the end of the last frame (celestial frame),
+// for the telescope drive, and the camera's, for measuring how far the stars move.
+let driveCenter: THREE.Vector3 | null = null;
+let motionCenter: THREE.Vector3 | null = null;
+// 1, or less while the star field moves too fast on screen to follow (see STROBE_PX).
+let motionFade = 1;
 // Shared by every star material (and the planets' points of light).
 const starUniforms = {
 	uTime: { value: 0 },
@@ -250,6 +292,7 @@ const starUniforms = {
 };
 const skyFade = { stars: 0, lines: 0, ground: 0 }; // tweened; applied to the sky materials each frame
 let groundMaterial: THREE.ShaderMaterial | null = null;
+let groundMesh: THREE.Mesh | null = null;
 let skyInfo: SkyInfo | null = null;
 // Sky view zoom: fov is what's shown, eased each frame toward target (set by
 // fitting the constellation, and by the scroll wheel).
@@ -366,6 +409,8 @@ export function initCosmos(canvas: HTMLCanvasElement) {
 
 	const clock = new THREE.Clock();
 	const frame = () => {
+		// One reading of the sky's clock per frame, so it moves in even steps.
+		holdClock(performance.now());
 		const dt = Math.min(clock.getDelta(), 0.05);
 		const t = clock.elapsedTime;
 		// In the sky view the starfield turns with the celestial sphere instead (updateSky).
@@ -374,8 +419,20 @@ export function initCosmos(canvas: HTMLCanvasElement) {
 			stars.rotation.y += dt * drift;
 			stars.rotation.x += dt * drift * 0.4;
 		}
-		if (groundMaterial) groundMaterial.uniforms.uOpacity.value = skyFade.ground;
 		if (celestial) updateSky(dt, t);
+		// After updateSky, so this frame's decision applies this frame. Following something
+		// whose path brings the horizon into view, neither the ground nor the little planet
+		// under it is drawn (the planet stays hidden until the ground has faded back in, so
+		// it never shows through); otherwise the planet always shows.
+		planet.visible = !(view === 'surface' && groundHidden > 0.01);
+		if (groundMaterial && groundMesh) {
+			groundMesh.visible = groundHidden < 1;
+			groundMaterial.uniforms.uOpacity.value = skyFade.ground * (1 - groundHidden);
+			// The ground hides what's below the horizon through the depth buffer, once it's
+			// mostly there (not while fading in on arrival or back in after following).
+			groundMaterial.depthWrite = skyFade.ground > 0.5 && groundHidden < 0.5;
+		}
+		if (view === 'surface' && !busy && celestial) driveTelescope();
 		if (view === 'surface' && !busy && !drag.active) {
 			if (trackedItem) trackLock = Math.min(1, trackLock + dt / TRACK_LOCK_SECONDS);
 			const ease = trackedItem && trackLock >= 1 ? 1 : Math.min(1, dt * 8 + trackLock * trackLock);
@@ -394,6 +451,8 @@ export function initCosmos(canvas: HTMLCanvasElement) {
 		}
 
 		camera.updateMatrixWorld();
+		if (view === 'surface' && celestial) measureSkyMotion(dt);
+		(stars.material as THREE.PointsMaterial).opacity = 0.9 * (view === 'surface' ? motionFade : 1);
 		updateOverlay();
 		renderer.render(scene, camera);
 		requestAnimationFrame(frame);
@@ -593,9 +652,31 @@ async function planetToSurface() {
 		// The big ground fades in only near touchdown, so the small planet looks right on approach.
 		tween(skyFade, { ground: 1, duration: 0.8, delay: 0.9 }),
 	]);
+	easeOutToWideView();
 }
 
+// How long the sky view takes to ease from the constellation out to its widest view (seconds).
+const WIDE_VIEW_SECONDS = 2.5;
+
+/**
+ * After arriving (or moving to another location), widen the view from the
+ * constellation it's framing to take in as much sky as possible. Any zoom or
+ * lock-on by the visitor cancels it (stopWideningView).
+ */
+function easeOutToWideView(delay = 0) {
+	stopWideningView();
+	widening = gsap.to(skyZoom, { target: SKY_ZOOM_MAX, duration: WIDE_VIEW_SECONDS, delay, ease: 'power2.inOut' });
+}
+
+function stopWideningView() {
+	widening?.kill();
+	widening = null;
+}
+let widening: gsap.core.Tween | null = null;
+
 async function surfaceToPlanet() {
+	stopWideningView();
+	trackedItem = null; // stop following, so the ground and the planet come back for the flight up
 	const { n, t, eye } = surfaceFrame!;
 	const site = eye.clone().addScaledVector(n, -SURFACE_HEIGHT);
 	await Promise.all([
@@ -780,7 +861,7 @@ function onPointerMove(e: PointerEvent) {
 	if (pinch) {
 		// Zoom by how far the fingers have spread (or closed), toward the point between them.
 		const [a, b] = [...pointers.values()];
-		zoomToward(clamp((pinch.fov * pinch.distance) / pinchDistance(), SKY_ZOOM_MIN, SKY_ZOOM_MAX), (a.x + b.x) / 2, (a.y + b.y) / 2);
+		zoomToward(clamp((pinch.fov * pinch.distance) / pinchDistance(), zoomFloor(), SKY_ZOOM_MAX), (a.x + b.x) / 2, (a.y + b.y) / 2);
 		return;
 	}
 	// A missed pointerup (e.g. released over another window) must not leave the drag stuck on.
@@ -806,7 +887,8 @@ function onPointerMove(e: PointerEvent) {
 		const speed = 0.004 * (skyZoom.fov / SURFACE_FOV_MAX);
 		if (drag.moved > DRAG_THRESHOLD) trackedItem = null; // looking around stops following a body
 		look.yaw = lookTarget.yaw = look.yaw - dx * speed;
-		look.pitch = lookTarget.pitch = clamp(look.pitch + dy * speed, -0.35, SKY_PITCH_MAX);
+		// Below the usual limit (after following something down there), never tilt further down.
+		look.pitch = lookTarget.pitch = clamp(look.pitch + dy * speed, Math.min(SKY_PITCH_MIN, look.pitch), SKY_PITCH_MAX);
 	}
 }
 
@@ -823,11 +905,20 @@ function pinchDistance(): number {
 	return Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
 }
 
+/**
+ * The narrowest field of view (degrees) allowed right now: the usual limit, or
+ * locked onto a disk, down to where that disk is about twice the view's height.
+ */
+function zoomFloor(): number {
+	const radius = trackedItem?.angularRadius;
+	return radius ? Math.max(SKY_ZOOM_DEEP, Math.min(SKY_ZOOM_MIN, THREE.MathUtils.radToDeg(radius))) : SKY_ZOOM_MIN;
+}
+
 /** Sky view: the scroll wheel zooms in and out, toward whatever is under the cursor. */
 function onWheel(e: WheelEvent) {
 	if (view !== 'surface' || busy) return;
 	e.preventDefault();
-	zoomToward(clamp(skyZoom.target * Math.exp(e.deltaY * 0.0025), SKY_ZOOM_MIN, SKY_ZOOM_MAX), e.clientX, e.clientY);
+	zoomToward(clamp(skyZoom.target * Math.exp(e.deltaY * 0.0025), zoomFloor(), SKY_ZOOM_MAX), e.clientX, e.clientY);
 }
 
 /**
@@ -836,6 +927,7 @@ function onWheel(e: WheelEvent) {
  */
 function zoomToward(after: number, screenX: number, screenY: number) {
 	autoZoomOut = false;
+	stopWideningView();
 	const before = skyZoom.target;
 	skyZoom.target = after;
 	if (trackedItem) return; // following a body: zoom on it, not toward the pointer
@@ -848,7 +940,7 @@ function zoomToward(after: number, screenX: number, screenY: number) {
 	// ...of which this much needs to become the new center: all of it zoomed in infinitely, none for no change.
 	const share = 1 - after / before;
 	lookTarget.yaw += offYaw * share;
-	lookTarget.pitch = clamp(lookTarget.pitch + offPitch * share, -0.35, SKY_PITCH_MAX);
+	lookTarget.pitch = clamp(lookTarget.pitch + offPitch * share, Math.min(SKY_PITCH_MIN, lookTarget.pitch), SKY_PITCH_MAX);
 }
 
 /**
@@ -859,14 +951,80 @@ function focusOn(item: SkyItem) {
 	trackedItem = item;
 	trackLock = 0;
 	autoZoomOut = false;
+	stopWideningView();
 	aimAt(item);
 	// Fill about a third of the view's height; a star (a point) gets its close-up.
 	const fov = item.focusFov ?? (item.angularRadius ? THREE.MathUtils.radToDeg(item.angularRadius * 2) * 3 : STAR_FOCUS_FOV);
-	skyZoom.target = clamp(fov, SKY_ZOOM_MIN, SKY_ZOOM_MAX);
+	skyZoom.target = clamp(fov, zoomFloor(), SKY_ZOOM_MAX);
 }
+
+// Extra room (radians) kept between the horizon and the edge of the view before the ground is hidden.
+const HORIZON_MARGIN = 0.005;
+// Wide views show the ground anyway: there it's only hidden once the followed object is this low (radians, ~15°).
+const WIDE_VIEW_HIDE_BELOW = 0.26;
+
+/**
+ * Following something with its center at (or headed down to) this altitude
+ * (radians), would the horizon be in view? The view's lowest point is about its
+ * half-diagonal below the center (using the widest the field of view is or is
+ * zooming to). In wide views the horizon is in view already, so there the ground
+ * stays until the object is within WIDE_VIEW_HIDE_BELOW of it.
+ */
+function groundWouldShow(lowest: number): boolean {
+	const halfHeight = THREE.MathUtils.degToRad(Math.max(camera.fov, skyZoom.fov, skyZoom.target)) / 2;
+	const halfDiagonal = Math.atan(Math.tan(halfHeight) * Math.hypot(1, camera.aspect));
+	return lowest - halfDiagonal < HORIZON_MARGIN && lowest < WIDE_VIEW_HIDE_BELOW;
+}
+
+// How far ahead (real seconds) the ground looks at the followed object's path, and in how many steps.
+const GROUND_LEAD_SECONDS = 1.5;
+const GROUND_LEAD_STEPS = 6;
+
+/**
+ * The lowest altitude (radians) a sky item reaches by the next frame (dt from now)
+ * and over the next GROUND_LEAD_SECONDS of real time, at the clock's current speed
+ * (in whichever direction it runs). Fast clocks look hours or days ahead; paused,
+ * it doesn't look ahead at all.
+ */
+function lowestAltitudeAhead(item: SkyItem, now: Date, dt: number): number {
+	const rate = clockRate();
+	const entry = findEntry(item.key);
+	if (!rate || !entry) return Infinity;
+	const obs = getObserver();
+	const at = (realSeconds: number) => entryAltAz(entry, obs, new Date(now.getTime() + rate * realSeconds * 1000))?.alt ?? Infinity;
+	let lowest = at(Math.max(dt, 1 / 60)); // the next frame
+	for (let k = 1; k <= GROUND_LEAD_STEPS; k++) lowest = Math.min(lowest, at((GROUND_LEAD_SECONDS * k) / GROUND_LEAD_STEPS));
+	return lowest;
+}
+
+let followNoteText = '';
+
+/** Show (or with null, hide) the note that the followed item is below the horizon. */
+function showFollowNote(item: SkyItem | null) {
+	const note = binding?.followNote;
+	if (!note) return;
+	note.classList.toggle('is-visible', !!item);
+	if (!item) return;
+	const name = item.name.split(' · ')[0];
+	const place = getObserver().place;
+	const text = `${name} is below the horizon from ${place === 'your location' ? 'your location' : place}. Following it, with the ground hidden.`;
+	if (text !== followNoteText) {
+		followNoteText = text;
+		note.querySelector('[data-follow-text]')!.textContent = text;
+	}
+}
+
+/** Sky view: stop following whatever the telescope is locked onto, and tilt back up to the sky if looking at the ground. */
+export function stopFollowing() {
+	trackedItem = null;
+	if (lookTarget.pitch < SKY_LOOK_UP) lookTarget.pitch = SKY_LOOK_UP;
+}
+// Where "Stop following" tilts the view to when it's below the horizon: a little above it (radians).
+const SKY_LOOK_UP = 0.15;
 
 /** Sky view: ease the telescope back out to the naked eye (still following whatever it was on). */
 export function zoomOutSky() {
+	stopWideningView();
 	if (view === 'surface' && skyZoom.target < NAKED_EYE_FOV) autoZoomOut = true;
 }
 
@@ -876,7 +1034,7 @@ export function zoomOutSky() {
  */
 export function lockOnto(key: string): boolean {
 	const item = skyItems.find((i) => i.key === key);
-	if (view !== 'surface' || busy || !item?.hoverable) return false;
+	if (view !== 'surface' || busy || !item || !(item.up ?? item.hoverable)) return false;
 	focusOn(item);
 	return true;
 }
@@ -890,8 +1048,9 @@ export function lookToward(alt: number, az: number, fov?: number) {
 	if (view !== 'surface' || busy) return;
 	trackedItem = null;
 	autoZoomOut = false;
+	if (fov !== undefined) stopWideningView();
 	lookTarget.yaw = az + 2 * Math.PI * Math.round((look.yaw - az) / (2 * Math.PI)); // the short way round
-	lookTarget.pitch = clamp(alt, -0.35, SKY_PITCH_MAX);
+	lookTarget.pitch = clamp(alt, SKY_PITCH_MIN, SKY_PITCH_MAX);
 	if (fov !== undefined) skyZoom.target = clamp(fov, SKY_ZOOM_MIN, SKY_ZOOM_MAX);
 }
 
@@ -901,13 +1060,73 @@ export function getSkyLook(): { heading: number; pitch: number } | null {
 	return { heading: ((look.yaw % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI), pitch: look.pitch };
 }
 
+/** The sky view's look direction (world) for a yaw and pitch. */
+function lookDirection(yaw: number, pitch: number): THREE.Vector3 {
+	const { n, t } = surfaceFrame!;
+	return t.clone().applyAxisAngle(n, -yaw).multiplyScalar(Math.cos(pitch)).addScaledVector(n, Math.sin(pitch));
+}
+
+/** The celestial sphere's rotation in the world (directions, celestial frame -> world). */
+function celestialRotation(): THREE.Quaternion {
+	return celestial!.getWorldQuaternion(new THREE.Quaternion());
+}
+
+/**
+ * The telescope drive: zoomed in, and not locked onto anything, turn the view with
+ * the stars (as the sky turned this frame), so they hold still however fast the
+ * clock runs. Partly between the DRIVE_FOV fields of view; not at all wider. It lets
+ * go rather than follow the stars into the ground: once its point would take the
+ * bottom of the view below the horizon, the view holds there and the stars set past it.
+ */
+function driveTelescope() {
+	const { n, t, r } = surfaceFrame!;
+	const turn = celestialRotation();
+	const weight = trackedItem || drag.active || pinch ? 0 : smoothstep(DRIVE_FOV[0], DRIVE_FOV[1], skyZoom.fov);
+	if (driveCenter && weight > 0) {
+		// Where last frame's center has been carried by the sky's turning.
+		const dir = driveCenter.clone().applyQuaternion(turn);
+		const yaw = Math.atan2(dir.dot(r), dir.dot(t));
+		const pitch = Math.asin(clamp(dir.dot(n), -1, 1));
+		const halfHeight = THREE.MathUtils.degToRad(skyZoom.fov) / 2;
+		const settingIntoGround = pitch < halfHeight && pitch < lookTarget.pitch;
+		const dYaw = settingIntoGround ? 0 : weight * (yaw - lookTarget.yaw - 2 * Math.PI * Math.round((yaw - lookTarget.yaw) / (2 * Math.PI)));
+		const dPitch = settingIntoGround ? 0 : weight * (pitch - lookTarget.pitch);
+		// Move the view and its target together, so the turn isn't eased (and lagged).
+		lookTarget.yaw += dYaw;
+		look.yaw += dYaw;
+		const low = Math.min(SKY_PITCH_MIN, lookTarget.pitch);
+		lookTarget.pitch = clamp(lookTarget.pitch + dPitch, low, SKY_PITCH_MAX);
+		look.pitch = clamp(look.pitch + dPitch, Math.min(SKY_PITCH_MIN, look.pitch), SKY_PITCH_MAX);
+	}
+	driveCenter = lookDirection(lookTarget.yaw, lookTarget.pitch).applyQuaternion(turn.invert());
+}
+
+/**
+ * How far the star field moved on screen this frame because of the clock (the sky
+ * turning, or the view following something across it), and the background's fade to
+ * match. While the visitor is looking around or zooming, the fade holds where it is.
+ */
+function measureSkyMotion(dt: number) {
+	const turn = celestialRotation();
+	const forward = camera.getWorldDirection(new THREE.Vector3());
+	const zooming = Math.abs(skyZoom.target - skyZoom.fov) > skyZoom.fov * 0.02;
+	if (motionCenter && !drag.active && !pinch && !zooming && !busy) {
+		const pxPerRadian = window.innerHeight / 2 / Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
+		const moved = motionCenter.clone().applyQuaternion(turn).angleTo(forward) * pxPerRadian;
+		const target = 1 - smoothstep(STROBE_PX[0], STROBE_PX[1], moved);
+		motionFade += (target - motionFade) * Math.min(1, dt * 6);
+	}
+	motionCenter = forward.applyQuaternion(turn.invert());
+}
+
 /** Point the sky view (eased by the frame loop) at a sky item. */
 function aimAt(item: SkyItem) {
 	const { eye, n, t, r } = surfaceFrame!;
 	const dir = worldOf(item).sub(eye).normalize();
 	const yaw = Math.atan2(dir.dot(r), dir.dot(t));
 	lookTarget.yaw = yaw + 2 * Math.PI * Math.round((look.yaw - yaw) / (2 * Math.PI)); // the short way round
-	lookTarget.pitch = clamp(Math.asin(dir.dot(n)), -0.35, SKY_PITCH_MAX);
+	// Following it, the view tilts as far down as it takes, even below the horizon.
+	lookTarget.pitch = clamp(Math.asin(dir.dot(n)), -SKY_PITCH_MAX, SKY_PITCH_MAX);
 }
 
 function onPointerUp(e: PointerEvent) {
@@ -959,8 +1178,35 @@ function rotatePlanet(alongX: number, alongY: number) {
 // ---------------------------------------------------------------------------
 // Sky
 
-const BODY_NAMES: BodyName[] = ['Moon', 'Mercury', 'Venus', 'Mars', 'Jupiter', 'Saturn', 'Uranus', 'Neptune'];
+const BODY_NAMES: BodyName[] = [
+	'Sun',
+	'Moon',
+	'Mercury',
+	'Venus',
+	'Mars',
+	'Jupiter',
+	'Saturn',
+	'Uranus',
+	'Neptune',
+	'Pluto',
+	'Ceres',
+	'Vesta',
+	'Eris',
+	'Io',
+	'Europa',
+	'Ganymede',
+	'Callisto',
+];
 const BODY_DISTANCE = SKY_RADIUS * 0.97; // just in front of the stars, so the Moon can pass over them
+// The Sun sits behind the Moon and planets, so eclipses and transits come out right.
+const SUN_DISTANCE = SKY_RADIUS * 0.985;
+// Fainter than the naked eye can see, a body only shows through the telescope: the
+// faintest magnitude visible goes up by this much for each tenfold magnification.
+const MAGNITUDE_PER_DECADE = 4;
+// Jupiter's moons show (and can be hovered) once at least this far from Jupiter on screen (pixels).
+const MOON_SEPARATION_PX = 14;
+// A body's point of light gives way to its globe as the disk grows across these sizes (pixels).
+const DISK_FADE_PX = [6, 16];
 const DEEP_SKY_DISTANCE = SKY_RADIUS * 1.01; // just behind the stars
 const COMET_DISTANCE = SKY_RADIUS * 0.98; // in front of the stars, behind the Moon and planets
 const METEOR_DISTANCE = SKY_RADIUS * 0.96; // in front of everything: meteors burn up in our own air
@@ -1150,7 +1396,11 @@ function buildSky(): { yaw: number; pitch: number } {
 				{ local: new THREE.Vector3(), size: 1, color: new THREE.Color(PLANET_GLOW[name]), twinkle: false },
 			]);
 			glowPosition = geometry.getAttribute('position') as THREE.BufferAttribute;
-			celestial.add(new THREE.Points(geometry, glow));
+			const point = new THREE.Points(geometry, glow);
+			// The point moves every frame, so its bounding sphere (made at the origin) would be
+			// wrong: without this a narrow telescope view culls it as off screen.
+			point.frustumCulled = false;
+			celestial.add(point);
 		}
 		const item: SkyItem = { key: `body:${name}`, name, local: new THREE.Vector3(), hoverable: false };
 		skyBodies.push({ name, item, visual, glow, glowPosition });
@@ -1173,7 +1423,7 @@ function buildSky(): { yaw: number; pitch: number } {
 	const narrowSide = Math.min(1, camera.aspect);
 	const fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(spread) / (SKY_FILL * narrowSide)));
 	skyZoom.target = clamp(fov, SURFACE_FOV_MIN, SURFACE_FOV_MAX);
-	return { yaw: Math.atan2(center.dot(r), center.dot(t)), pitch: clamp(Math.asin(center.dot(n)), -0.35, SKY_PITCH_MAX) };
+	return { yaw: Math.atan2(center.dot(r), center.dot(t)), pitch: clamp(Math.asin(center.dot(n)), SKY_PITCH_MIN, SKY_PITCH_MAX) };
 }
 
 function removeSky() {
@@ -1191,6 +1441,7 @@ function removeSky() {
 	sky = null;
 	celestial = null;
 	groundMaterial = null;
+	groundMesh = null;
 	skyItems = [];
 	skyConstellations = [];
 	skyLoose = null;
@@ -1198,6 +1449,10 @@ function removeSky() {
 	skyDeep = [];
 	skyComets = [];
 	skyMeteors = null;
+	groundHidden = 0;
+	driveCenter = motionCenter = null;
+	motionFade = 1;
+	showFollowNote(null);
 	hoveredItem = null;
 	trackedItem = null;
 }
@@ -1246,16 +1501,17 @@ function updateSky(dt: number, t: number) {
 	starUniforms.uZoom.value = NAKED_EYE_FOV / camera.fov;
 
 	if (skyLoose) {
-		skyLoose.stars.uniforms.uOpacity.value = skyFade.stars;
+		skyLoose.stars.uniforms.uOpacity.value = skyFade.stars * motionFade;
 		const altitudes = constellationAltitudes(skyLoose.items);
 		skyLoose.items.forEach((item, i) => (item.hoverable = altitudes[i] > 0));
 	}
 	for (const c of skyConstellations) {
 		const altitudes = constellationAltitudes(c.items);
-		const target = altitudes.every((sinAlt) => sinAlt > 0) ? 1 : 0;
+		// Shown once fully risen, or while one of its stars is being followed.
+		const target = altitudes.every((sinAlt) => sinAlt > 0) || (trackedItem !== null && c.items.includes(trackedItem)) ? 1 : 0;
 		c.opacity += (target - c.opacity) * Math.min(1, dt * 3);
-		c.stars.uniforms.uOpacity.value = c.opacity * skyFade.stars;
-		c.lines.opacity = c.opacity * skyFade.lines;
+		c.stars.uniforms.uOpacity.value = c.opacity * skyFade.stars * motionFade;
+		c.lines.opacity = c.opacity * skyFade.lines * motionFade;
 		c.items.forEach((item, i) => (item.hoverable = c.opacity > 0.5 && altitudes[i] > 0));
 	}
 	updateDeepSky();
@@ -1264,10 +1520,10 @@ function updateSky(dt: number, t: number) {
 		const { showers, items } = skyMeteors;
 		const sinAlt = (d: THREE.Vector3) => tmp.copy(d).applyQuaternion(celestial!.quaternion).dot(surfaceFrame!.n);
 		// With reduced motion, no meteors fall (the radiants still show).
-		showers.update(now, reduceMotion ? 0 : dt, skyFade.stars, sinAlt);
+		showers.update(now, dt, reduceMotion ? 0 : clockRate(), skyFade.stars, sinAlt);
 		showers.showers.forEach(({ shower, radiant, activity }, i) => {
 			items[i].hoverable = activity.active && sinAlt(radiant) > 0;
-			items[i].detail = `Peaks ${shortDate(activity.window.peak)} · about ${Math.round(activity.rate)} an hour now · shown ${METEOR_SPEEDUP}× faster · from ${shower.parent}`;
+			items[i].detail = `Peaks ${shortDate(activity.window.peak)} · about ${Math.round(activity.rate)} an hour now · shown ${METEOR_SPEEDUP}× as often, more with the clock sped up · from ${shower.parent}`;
 		});
 	}
 	updateBodies(now);
@@ -1276,12 +1532,20 @@ function updateSky(dt: number, t: number) {
 	stars.position.copy(surfaceFrame!.eye);
 	stars.quaternion.copy(celestial!.quaternion);
 
-	// A focused body: keep the telescope on it as the sky turns, until it sets. Then
-	// zoom back out, so the view isn't left staring into the ground.
-	if (trackedItem && !trackedItem.hoverable) {
-		trackedItem = null;
-		autoZoomOut = true;
-	}
+	// A focused body: keep the telescope on it as the sky turns, even after it sets:
+	// the ground fades away as it nears the horizon, and a note says it's being followed below.
+	const altitude = trackedItem && view === 'surface' ? Math.asin(clamp(constellationAltitudes([trackedItem])[0], -1, 1)) : null;
+	const following = altitude !== null && altitude < 0;
+	// Checked against the lowest the object gets over the next frame and the next moments
+	// of the sky's clock (and where the view points now), so however fast time runs the
+	// ground is gone before the horizon could come into view: hidden at once, not faded.
+	const lowest = altitude === null ? null : Math.min(altitude, look.pitch, lowestAltitudeAhead(trackedItem!, now, dt));
+	groundHidden = lowest !== null && groundWouldShow(lowest) ? 1 : groundHidden * Math.max(0, 1 - dt * 3);
+	showFollowNote(following ? trackedItem : null);
+	// Let go below the usual limit: ease back up to it.
+	if (!trackedItem && !drag.active && lookTarget.pitch < SKY_PITCH_MIN) lookTarget.pitch = SKY_PITCH_MIN;
+	// Past the usual limit only while locked onto a disk: let go, and ease back out to it.
+	if (skyZoom.target < zoomFloor()) skyZoom.target = zoomFloor();
 	if (trackedItem && view === 'surface' && !busy && !drag.active) aimAt(trackedItem);
 	if (autoZoomOut) {
 		skyZoom.target = Math.min(NAKED_EYE_FOV, Math.max(skyZoom.target, SKY_ZOOM_MIN) * AUTO_ZOOM_OUT_RATE ** dt);
@@ -1326,10 +1590,10 @@ function updateDeepSky() {
 		if (photo) {
 			const target = ready && truePx > DEEP_SKY_PHOTO_PX ? 1 : 0;
 			photo.mix = target > photo.mix ? Math.min(target, photo.mix + dt * 2) : Math.max(target, photo.mix - dt * 2);
-			photo.material.uniforms.uOpacity.value = skyFade.stars * photo.mix;
+			photo.material.uniforms.uOpacity.value = skyFade.stars * motionFade * photo.mix;
 		}
 		const mix = photo?.mix ?? 0;
-		d.material.opacity = skyFade.stars * d.brightness * Math.max(0.3, enlarge ** -0.6) * (1 - mix);
+		d.material.opacity = skyFade.stars * motionFade * d.brightness * Math.max(0.3, enlarge ** -0.6) * (1 - mix);
 		d.item.detail = mix > 0.5 ? creditLine(image) : undefined;
 	}
 }
@@ -1391,7 +1655,9 @@ function updateComets(now: Date, dt: number) {
 	const pxPerRadian = window.innerHeight / 2 / Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
 	for (const { item, visual, comet } of skyComets) {
 		const state = cometState(comet, now);
-		visual.update(state, { opacity: skyFade.stars, pxPerRadian, dt, inView: inView(visual.object.children[0]) });
+		// The comet being followed stays; others fade with the background when it streams by.
+		const opacity = skyFade.stars * (item === trackedItem ? 1 : motionFade);
+		visual.update(state, { opacity, pxPerRadian, dt, inView: inView(visual.object.children[0]) });
 		item.local.copy(visual.head);
 		const bright = state.magnitude < COMET_LIMIT;
 		item.hoverable = bright && constellationAltitudes([item])[0] > 0;
@@ -1416,6 +1682,10 @@ function updateBodies(now: Date) {
 	const lat = THREE.MathUtils.degToRad(obs.lat);
 	const zenith = new THREE.Vector3(Math.cos(lat) * Math.cos(lst), Math.cos(lat) * Math.sin(lst), Math.sin(lat));
 	const pxPerRadian = window.innerHeight / 2 / Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
+	// The faintest magnitude the telescope shows at this magnification.
+	const limit = NAKED_EYE_LIMIT + MAGNITUDE_PER_DECADE * Math.log10(Math.max(1, NAKED_EYE_FOV / camera.fov));
+	const jupiter = bodies.find((body) => body.name === 'Jupiter')!;
+	const jupiterDir = celestialDir(jupiter.ra, jupiter.dec);
 
 	for (const entry of skyBodies) {
 		const b = bodies.find((body) => body.name === entry.name)!;
@@ -1423,16 +1693,23 @@ function updateBodies(now: Date) {
 		// The Moon is close enough that our spot on Earth's surface matters: seen from
 		// the surface rather than Earth's center, it shifts by up to about 1°.
 		if (b.name === 'Moon') dir = dir.multiplyScalar(b.earthRadii).sub(zenith).normalize();
-		const center = dir.clone().multiplyScalar(BODY_DISTANCE);
+		// Jupiter's moons sit nearer or farther than Jupiter, so they pass in front of it or behind.
+		const moon = isGalileanMoon(b.name);
+		const distance = b.name === 'Sun' ? SUN_DISTANCE : moon ? BODY_DISTANCE * (b.distance / jupiter.distance) : BODY_DISTANCE;
+		const center = dir.clone().multiplyScalar(distance);
 		const [poleRa, poleDec] = BODY_POLES[b.name];
 		entry.visual.setPose(
 			center,
-			BODY_DISTANCE * Math.tan(b.angularRadius),
+			distance * Math.tan(b.angularRadius),
 			celestialDir(b.sunward.ra, b.sunward.dec),
 			celestialDir(poleRa / 15, poleDec),
 			dir.clone().negate(),
 		);
-		entry.visual.update(skyFade.stars, now.getTime(), 2 * b.angularRadius * pxPerRadian);
+		// Too small to read as a globe, a body is just its point of light; the globe fades
+		// in as the telescope zooms in (the Moon is always big enough to show its phase).
+		const diskPx = 2 * b.angularRadius * pxPerRadian;
+		const disk = b.name === 'Moon' ? 1 : smoothstep(DISK_FADE_PX[0], DISK_FADE_PX[1], diskPx);
+		entry.visual.update(skyFade.stars * disk, now.getTime(), diskPx);
 
 		const { item } = entry;
 		item.local.copy(center);
@@ -1441,22 +1718,32 @@ function updateBodies(now: Date) {
 		item.name =
 			b.name === 'Moon'
 				? `Moon · ${(Math.round((b.distance * KM_PER_AU) / 100) * 100).toLocaleString('en-US')} km · ${Math.round(b.litFraction * 100)}% lit`
-				: `${b.name} · ${b.distance.toFixed(1)} AU (${Math.round((b.distance * KM_PER_AU) / 299792.458 / 60)} light-minutes)`;
-		item.detail = entry.visual.showingMap() ? creditLine(planetMaps[b.name]) : undefined;
+				: `${b.name} · ${b.distance.toFixed(b.distance < 2 ? 2 : 1)} AU (${lightTime(b.distance)})`;
+		item.detail = entry.visual.showingMap()
+			? creditLine(planetMaps[b.name])
+			: b.magnitude > NAKED_EYE_LIMIT
+				? `magnitude ${b.magnitude.toFixed(1)} · zoom in to see it`
+				: undefined;
 		const sinAlt = tmp.copy(dir).applyQuaternion(celestial!.quaternion).dot(surfaceFrame!.n);
-		item.hoverable = sinAlt > 0;
+		item.up = sinAlt > 0;
+		// Too faint for this magnification, or a moon still lost in Jupiter's glare: not hoverable (yet).
+		const separationPx = moon ? dir.angleTo(jupiterDir) * pxPerRadian : Infinity;
+		const seen = smoothstep(limit + 1, limit - 1, b.magnitude) * (moon ? smoothstep(MOON_SEPARATION_PX * 0.6, MOON_SEPARATION_PX, separationPx) : 1);
+		item.hoverable = item.up && seen > 0.5;
 		// Saturn's rings skip the depth test (see skyBodies.ts), so hide bodies below the horizon outright.
-		entry.visual.object.visible = sinAlt > -0.02;
+		entry.visual.object.visible = sinAlt > -0.02 || item === trackedItem;
 
 		if (entry.glow && entry.glowPosition) {
 			entry.glowPosition.setXYZ(0, center.x, center.y, center.z);
 			entry.glowPosition.needsUpdate = true;
 			const size = entry.glow.uniforms.uSize;
-			size.value = clamp(2.3 - 0.35 * b.magnitude, 0.8, 3.4);
-			const diskPx = 2 * item.angularRadius * pxPerRadian;
-			// Uranus and Neptune are at or past the naked-eye limit: just a dim point.
-			const faint = clamp(1 - (b.magnitude - 4.5) * 0.2, 0.35, 1);
-			entry.glow.uniforms.uOpacity.value = entry.visual.object.visible ? skyFade.stars * faint * (1 - smoothstep(3, 10, diskPx)) : 0;
+			// Through the telescope a body looks as much brighter as its reach goes deeper.
+			const apparent = b.magnitude - (limit - NAKED_EYE_LIMIT);
+			// The Sun outshines everything: a bigger glow.
+			size.value = clamp(2.3 - 0.35 * apparent, 0.8, b.name === 'Sun' ? 7 : 3.4);
+			// Faint bodies are dim points, and those past the telescope's reach don't show at all.
+			const faint = clamp(1 - (apparent - 4.5) * 0.2, 0.35, 1) * seen;
+			entry.glow.uniforms.uOpacity.value = entry.visual.object.visible ? skyFade.stars * faint * (1 - disk) : 0;
 		}
 	}
 }
@@ -1489,8 +1776,8 @@ function starMaterial(): THREE.ShaderMaterial {
 			varying float vType;
 			varying float vDetail;
 			void main() {
-				vec4 world = modelMatrix * vec4(position, 1.0);
-				vec4 view = viewMatrix * world;
+				vec4 world = modelMatrix * vec4(position, 1.0); // for the altitude-based twinkle
+				vec4 view = modelViewMatrix * vec4(position, 1.0);
 				gl_Position = projectionMatrix * view;
 				// Through the telescope, stars swap their soft glow for a close-up image of their type, drawn
 				// larger, and keep growing as the zoom goes deeper so they can be seen up close.
@@ -1602,6 +1889,10 @@ function buildGround(): THREE.Mesh {
 		`,
 	});
 	const plane = new THREE.Mesh(new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE), groundMaterial);
+	// Drawn before everything else, so it hides what's below the horizon by depth rather than
+	// by painting over it.
+	plane.renderOrder = -1;
+	groundMesh = plane;
 	plane.position.copy(site);
 	// PlaneGeometry lies in its local XY plane facing +Z: map x to east (r), y to north (t), z to up (n).
 	plane.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(r, t, n));
@@ -1649,8 +1940,11 @@ export function getSkyInfo(): SkyInfo | null {
  */
 export function refreshSky(): SkyInfo | null {
 	if (view !== 'surface' || busy || !surfaceFrame) return null;
-	// buildSky sets a new zoom target; the frame loop eases toward it.
+	// buildSky frames the new featured constellation; the frame loop eases toward it,
+	// then the view widens out again.
+	stopWideningView();
 	const aim = buildSky();
+	easeOutToWideView(0.8);
 	// Turn the short way round (the frame loop eases toward it).
 	lookTarget.yaw = aim.yaw + 2 * Math.PI * Math.round((look.yaw - aim.yaw) / (2 * Math.PI));
 	lookTarget.pitch = aim.pitch;
@@ -1854,6 +2148,12 @@ const STAR_TYPES: { maxBv: number; label: string; core: string; halo: [number, n
 	{ maxBv: 1.55, label: 'K-type star · orange', core: '#fff0dc', halo: [255, 185, 115], spikes: 0.6 },
 	{ maxBv: Infinity, label: 'M-type star · cool, red-orange', core: '#ffe6d2', halo: [255, 130, 85], spikes: 0.5 },
 ];
+
+/** Light travel time for a distance in AU: "8 light-minutes", "4.6 light-hours". */
+function lightTime(au: number): string {
+	const minutes = (au * KM_PER_AU) / 299792.458 / 60;
+	return minutes < 120 ? `${Math.round(minutes)} light-minutes` : `${(minutes / 60).toFixed(1)} light-hours`;
+}
 
 /** Point size for a star of a given magnitude: brighter stars get a bigger glow. */
 function starSize(mag: number): number {

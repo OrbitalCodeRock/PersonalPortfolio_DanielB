@@ -40,6 +40,12 @@ const { items } = Astro.props;
 		<div class="star-tip" data-star-tip aria-hidden="true"></div>
 		<SkyFinder />
 
+		<!-- Shown while the telescope follows something below the horizon (text set by cosmos.ts). -->
+		<div class="follow-note" role="status" data-follow-note>
+			<span data-follow-text></span>
+			<button class="follow-stop" type="button" data-follow-stop>Stop following</button>
+		</div>
+
 		<div class="zoom-readout" data-zoom-box>
 			<span aria-hidden="true" data-zoom-readout></span>
 			<button class="zoom-out" type="button" title="Zoom back out to the naked eye" data-zoom-out>Zoom out</button>
@@ -323,6 +329,56 @@ const { items } = Astro.props;
 		font-size: 0.7rem;
 		letter-spacing: 0;
 		text-align: center;
+	}
+
+	/* Following something below the horizon: a note under the compass. */
+	.follow-note {
+		position: absolute;
+		top: 92px;
+		left: 50%;
+		z-index: 201;
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		max-width: min(520px, calc(100% - 32px));
+		padding: 6px 6px 6px 14px;
+		border: 1px solid var(--border-strong);
+		border-radius: 10px;
+		background: rgba(10, 16, 34, 0.88);
+		color: var(--text);
+		font-size: 0.82rem;
+		line-height: 1.35;
+		opacity: 0;
+		pointer-events: none;
+		transform: translate(-50%, -6px);
+		transition:
+			opacity 0.3s,
+			transform 0.3s;
+	}
+	.follow-note:global(.is-visible) {
+		opacity: 1;
+		pointer-events: auto;
+		transform: translate(-50%, 0);
+	}
+	.follow-stop {
+		flex: none;
+		padding: 4px 10px;
+		border: 1px solid var(--border);
+		border-radius: 999px;
+		background: none;
+		color: var(--accent);
+		font: inherit;
+		font-size: 0.75rem;
+		cursor: pointer;
+	}
+	.follow-stop:hover {
+		border-color: var(--accent);
+	}
+	/* Narrow screens: the compass drops below the top buttons (SkyFinder.astro), so this goes under it. */
+	@media (max-width: 760px) {
+		.follow-note {
+			top: 142px;
+		}
 	}
 
 	/* Telescope magnification and a zoom-out button, bottom left, once zoomed in (text set by cosmos.ts). */
@@ -692,7 +748,17 @@ const { items } = Astro.props;
 		togglePause,
 		type Observer,
 	} from '../scripts/sky';
-	import { bindHome, diveToCard, getView, isBusy, refreshSky, setView, zoomOutSky, type View } from '../scripts/cosmos';
+	import {
+		bindHome,
+		diveToCard,
+		getView,
+		isBusy,
+		refreshSky,
+		setView,
+		stopFollowing,
+		zoomOutSky,
+		type View,
+	} from '../scripts/cosmos';
 	import {
 		allZones,
 		deviceZone,
@@ -955,6 +1021,10 @@ const { items } = Astro.props;
 		timeBar.addEventListener('wheel', (e) => e.stopPropagation(), { signal });
 		// The zoom-out button: likewise not a press on the sky.
 		zoomBox.addEventListener('pointerdown', (e) => e.stopPropagation(), { signal });
+		// The note about following something below the horizon: likewise, and its button stops following.
+		const followNote = root.querySelector<HTMLElement>('[data-follow-note]')!;
+		followNote.addEventListener('pointerdown', (e) => e.stopPropagation(), { signal });
+		root.querySelector('[data-follow-stop]')!.addEventListener('click', stopFollowing, { signal });
 		root.querySelector('[data-zoom-out]')!.addEventListener('click', zoomOutSky, { signal });
 		// Opening the date picker from the keyboard closes the location menu too.
 		timeDate.addEventListener('focus', closePlaceMenu, { signal });
@@ -991,7 +1061,7 @@ const { items } = Astro.props;
 		showTime();
 		showZone();
 
-		bindHome({ eye, stage, cards, starTip, zoomBox, zoomReadout, onEgg: () => go('surface') });
+		bindHome({ eye, stage, cards, starTip, zoomBox, zoomReadout, followNote, onEgg: () => go('surface') });
 		eye.addEventListener('click', () => go('planet'), { signal });
 		root.querySelector('[data-back]')!.addEventListener('click', back, { signal });
 		document.addEventListener(

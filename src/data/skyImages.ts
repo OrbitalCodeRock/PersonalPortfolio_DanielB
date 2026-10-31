@@ -57,6 +57,48 @@ export const planetMaps: Record<string, ImageCredit & { map: string }> = {
 		"artist": "Solar System Scope",
 		"license": "CC BY 4.0",
 		"source": "https://commons.wikimedia.org/wiki/File:Solarsystemscope_texture_2k_neptune.jpg"
+	},
+	"Pluto": {
+		"map": "/sky/planets/pluto.jpg",
+		"artist": "NASA / Johns Hopkins University Applied Physics Laboratory / Southwest Research Institute (unimaged far south filled in)",
+		"license": "Public domain",
+		"source": "https://commons.wikimedia.org/wiki/File:Pluto_color_mapmosaic.jpg"
+	},
+	"Ceres": {
+		"map": "/sky/planets/ceres.jpg",
+		"artist": "NASA/JPL-Caltech/UCLA/MPS/DLR/IDA (true-color band only)",
+		"license": "Public domain",
+		"source": "https://commons.wikimedia.org/wiki/File:PIA20354-Ceres-DwarfPlanet-MercatorMap-HAMO-20160322-0DegreeLongitude.jpg"
+	},
+	"Vesta": {
+		"map": "/sky/planets/vesta.jpg",
+		"artist": "NASA/JPL-Caltech/UCLA/MPS/DLR/IDA",
+		"license": "Public domain",
+		"source": "https://commons.wikimedia.org/wiki/File:Vesta_map_for_GeoHack.png"
+	},
+	"Europa": {
+		"map": "/sky/planets/europa.jpg",
+		"artist": "U.S. Geological Survey / Planetary Data System / Tammy Becker",
+		"license": "Public domain",
+		"source": "https://commons.wikimedia.org/wiki/File:Europa_Voyager_GalileoSSI_global_mosaic.jpg"
+	},
+	"Ganymede": {
+		"map": "/sky/planets/ganymede.jpg",
+		"artist": "Caltech/JPL/USGS",
+		"license": "Public domain",
+		"source": "https://commons.wikimedia.org/wiki/File:Ganymede_map_NASA_JPL_Voyager.jpg"
+	},
+	"Callisto": {
+		"map": "/sky/planets/callisto.jpg",
+		"artist": "USGS Astrogeology Science Center",
+		"license": "Public domain",
+		"source": "https://commons.wikimedia.org/wiki/File:Callisto_USGS_global_small.jpg"
+	},
+	"Sun": {
+		"map": "/sky/planets/sun.jpg",
+		"artist": "Solar System Scope",
+		"license": "CC BY 4.0",
+		"source": "https://commons.wikimedia.org/wiki/File:Solarsystemscope_texture_2k_sun.jpg"
 	}
 };
 
