@@ -93,12 +93,6 @@ export const planetMaps: Record<string, ImageCredit & { map: string }> = {
 		"artist": "USGS Astrogeology Science Center",
 		"license": "Public domain",
 		"source": "https://commons.wikimedia.org/wiki/File:Callisto_USGS_global_small.jpg"
-	},
-	"Sun": {
-		"map": "/sky/planets/sun.jpg",
-		"artist": "Solar System Scope",
-		"license": "CC BY 4.0",
-		"source": "https://commons.wikimedia.org/wiki/File:Solarsystemscope_texture_2k_sun.jpg"
 	}
 };
 

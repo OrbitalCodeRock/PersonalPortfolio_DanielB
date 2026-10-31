@@ -14,6 +14,7 @@ import * as THREE from 'three';
 import type { BodyName } from './ephemeris';
 import { planetMaps } from '../data/skyImages';
 import { loadSkyImage } from './skyImageLoader';
+import { sunCoronaMaterial, sunSurfaceMaterial } from './skySun';
 
 export interface BodyVisual {
 	object: THREE.Group; // add it to the celestial sphere group
@@ -318,14 +319,27 @@ function ringMaterial(flattening: number): THREE.ShaderMaterial {
 
 export function createBodyVisual(name: BodyName): BodyVisual {
 	const object = new THREE.Group();
-	const material = bodyMaterial(name);
-	const geometry = new THREE.SphereGeometry(1, 64, 32);
+	// The Sun is a live simulation (skySun.ts) rather than a painted or mapped globe.
+	const material = name === 'Sun' ? sunSurfaceMaterial() : bodyMaterial(name);
+	// Enough segments that the edge stays round even filling the screen at the deepest
+	// zoom (and, for the Sun, meets its round corona without slivers).
+	const geometry = name === 'Sun' ? new THREE.SphereGeometry(1, 384, 192) : new THREE.SphereGeometry(1, 160, 80);
 	// Map longitude 0 (the middle of the map) to +z, the side facing us: for the Moon,
 	// that's its near side, which always faces Earth.
 	geometry.rotateY(-Math.PI / 2);
 	const sphere = new THREE.Mesh(geometry, material);
 	sphere.renderOrder = 1;
 	object.add(sphere);
+
+	// The Sun's corona, chromosphere and prominences, around the disk.
+	let corona: THREE.ShaderMaterial | null = null;
+	if (name === 'Sun') {
+		corona = sunCoronaMaterial();
+		const halo = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), corona);
+		halo.renderOrder = 2;
+		halo.frustumCulled = false; // a billboard: sized in its shader, not by its geometry
+		object.add(halo);
+	}
 
 	let rings: THREE.ShaderMaterial | null = null;
 	let ring: THREE.Mesh | null = null;
@@ -365,11 +379,19 @@ export function createBodyVisual(name: BodyName): BodyVisual {
 			object.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z));
 			sphere.scale.set(radius, radius * (1 - flattening), radius);
 			ring?.scale.setScalar(radius);
+			if (corona) corona.uniforms.uRadius.value = radius;
 			sunLocal.copy(sun).normalize();
 			poleLocal.copy(y);
 		},
 		update(opacity, simMs, diskPx) {
 			material.uniforms.uOpacity.value = opacity;
+			if (corona) {
+				// The Sun's surface and corona move in real time, whatever the sky's clock does.
+				const seconds = performance.now() / 1000;
+				material.uniforms.uTime.value = seconds;
+				corona.uniforms.uTime.value = seconds;
+				corona.uniforms.uOpacity.value = opacity;
+			}
 			if (mapUrl && !mapRequested && diskPx >= MAP_LOAD_PX) {
 				mapRequested = true;
 				loadSkyImage(mapUrl)

@@ -40,10 +40,19 @@ const { items } = Astro.props;
 		<div class="star-tip" data-star-tip aria-hidden="true"></div>
 		<SkyFinder />
 
-		<!-- Shown while the telescope follows something below the horizon (text set by cosmos.ts). -->
+		<!--
+			Shown while the telescope tracks something (name and place set by cosmos.ts), with a
+			button to stop; it says so when the object is below the horizon. Narrow screens show
+			only the short version.
+		-->
 		<div class="follow-note" role="status" data-follow-note>
-			<span data-follow-text></span>
-			<button class="follow-stop" type="button" data-follow-stop>Stop following</button>
+			<span class="follow-up">Tracking <strong data-follow-name></strong></span>
+			<span class="follow-down">
+				<strong data-follow-name></strong> is below the horizon<span class="follow-more">{' '}from <span data-follow-place></span>. Following it, with the ground hidden</span>.
+			</span>
+			<button class="follow-stop" type="button" data-follow-stop>
+				<span class="follow-more">Stop tracking</span><span class="follow-less">Stop</span>
+			</button>
 		</div>
 
 		<div class="zoom-readout" data-zoom-box>
@@ -331,7 +340,7 @@ const { items } = Astro.props;
 		text-align: center;
 	}
 
-	/* Following something below the horizon: a note under the compass. */
+	/* Tracking something (or following it below the horizon): a note under the compass. */
 	.follow-note {
 		position: absolute;
 		top: 92px;
@@ -374,10 +383,40 @@ const { items } = Astro.props;
 	.follow-stop:hover {
 		border-color: var(--accent);
 	}
+	.follow-note strong {
+		font-weight: 600;
+	}
+	.follow-down,
+	.follow-note:global(.is-below) .follow-up {
+		display: none;
+	}
+	.follow-note:global(.is-below) .follow-down {
+		display: inline;
+	}
+	.follow-less {
+		display: none;
+	}
 	/* Narrow screens: the compass drops below the top buttons (SkyFinder.astro), so this goes under it. */
 	@media (max-width: 760px) {
+		/* Small, and just "Saturn is below the horizon." with a Stop button, so it doesn't cover the view. */
 		.follow-note {
 			top: 142px;
+			gap: 8px;
+			max-width: calc(100% - 32px);
+			padding: 3px 3px 3px 10px;
+			border-radius: 999px;
+			font-size: 0.72rem;
+			white-space: nowrap;
+		}
+		.follow-stop {
+			padding: 2px 8px;
+			font-size: 0.68rem;
+		}
+		.follow-more {
+			display: none;
+		}
+		.follow-less {
+			display: inline;
 		}
 	}
 

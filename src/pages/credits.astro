@@ -15,7 +15,7 @@ const cometRows = comets
 	.filter((c) => cometImages[c.id])
 	.map((c) => ({ name: `${c.name} (${c.designation})`, credit: cometImages[c.id] }));
 const sections = [
-	{ title: 'Sun, Moon, planets and smaller worlds', intro: 'Surface maps wrapped onto the globes once they are big enough on screen.', rows: planets },
+	{ title: 'Moon, planets and smaller worlds', intro: 'Surface maps wrapped onto the globes once they are big enough on screen.', rows: planets },
 	{ title: 'Galaxies, nebulae and star clusters', intro: 'Photos shown in place of the drawn images when you zoom in.', rows: deep },
 	{ title: 'Comets', intro: "Photos laid along a comet's drawn tail when you zoom in on it.", rows: cometRows },
 ];
@@ -26,7 +26,7 @@ const sections = [
 	<p class="intro">
 		The sky view swaps in real images as you zoom in. They come from Wikimedia Commons, NASA, ESA, ESO and
 		astrophotographers who share their work under open licenses. Each was resized and recompressed for the web;
-		follow the source link for the original and its full license. The close-up star images, the drawn
+		follow the source link for the original and its full license. The Sun, the close-up star images, the drawn
 		galaxies, nebulae and comet tails, and the meteors are made in code.
 	</p>
 

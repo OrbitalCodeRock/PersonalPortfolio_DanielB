@@ -44,7 +44,7 @@ export interface HomeBinding {
 	cards: HTMLElement[];
 	starTip: HTMLElement; // shows a star's name in the sky view
 	zoomBox: HTMLElement; // holds the magnification and the zoom-out button; shown once zoomed in
-	followNote: HTMLElement; // "following it below the horizon" note; its [data-follow-text] gets the words
+	followNote: HTMLElement; // "following it below the horizon" note; its [data-follow-name] and [data-follow-place] get filled in
 	zoomReadout: HTMLElement; // telescope magnification in the sky view
 	onEgg: () => void;
 }
@@ -268,6 +268,8 @@ let trackedItem: SkyItem | null = null; // a body the telescope is following
 // locks on exactly, so it keeps up however fast the sky is turning.
 let trackLock = 0;
 let pressedBody: SkyItem | null = null; // the body under the pointer when it was pressed
+// Panning while tracking: how far the view sits from the tracked object (radians), kept as it moves.
+const trackOffset = { yaw: 0, pitch: 0 };
 let autoZoomOut = false; // zooming back out at AUTO_ZOOM_OUT_RATE; any manual zoom stops it
 // 1 while following something whose path would bring the horizon into view (see
 // groundWouldShow): the ground isn't drawn at all, hidden at once rather than faded.
@@ -433,7 +435,8 @@ export function initCosmos(canvas: HTMLCanvasElement) {
 			groundMaterial.depthWrite = skyFade.ground > 0.5 && groundHidden < 0.5;
 		}
 		if (view === 'surface' && !busy && celestial) driveTelescope();
-		if (view === 'surface' && !busy && !drag.active) {
+		// Tracking keeps easing onto the object even mid-drag (the drag pans around it).
+		if (view === 'surface' && !busy && (!drag.active || trackedItem)) {
 			if (trackedItem) trackLock = Math.min(1, trackLock + dt / TRACK_LOCK_SECONDS);
 			const ease = trackedItem && trackLock >= 1 ? 1 : Math.min(1, dt * 8 + trackLock * trackLock);
 			look.yaw += (lookTarget.yaw - look.yaw) * ease;
@@ -885,7 +888,15 @@ function onPointerMove(e: PointerEvent) {
 	} else if (view === 'surface') {
 		// Slower when zoomed in, so the sky still follows the pointer.
 		const speed = 0.004 * (skyZoom.fov / SURFACE_FOV_MAX);
-		if (drag.moved > DRAG_THRESHOLD) trackedItem = null; // looking around stops following a body
+		if (trackedItem) {
+			// Tracking: pan around the object, and keep that view of it as it moves.
+			trackOffset.yaw -= dx * speed;
+			trackOffset.pitch = clamp(trackOffset.pitch + dy * speed, -Math.PI / 2, Math.PI / 2);
+			aimAt(trackedItem);
+			look.yaw = lookTarget.yaw;
+			look.pitch = lookTarget.pitch;
+			return;
+		}
 		look.yaw = lookTarget.yaw = look.yaw - dx * speed;
 		// Below the usual limit (after following something down there), never tilt further down.
 		look.pitch = lookTarget.pitch = clamp(look.pitch + dy * speed, Math.min(SKY_PITCH_MIN, look.pitch), SKY_PITCH_MAX);
@@ -950,6 +961,7 @@ function zoomToward(after: number, screenX: number, screenY: number) {
 function focusOn(item: SkyItem) {
 	trackedItem = item;
 	trackLock = 0;
+	trackOffset.yaw = trackOffset.pitch = 0;
 	autoZoomOut = false;
 	stopWideningView();
 	aimAt(item);
@@ -999,18 +1011,22 @@ function lowestAltitudeAhead(item: SkyItem, now: Date, dt: number): number {
 
 let followNoteText = '';
 
-/** Show (or with null, hide) the note that the followed item is below the horizon. */
-function showFollowNote(item: SkyItem | null) {
+/**
+ * Show (or with null, hide) the tracking note: what's being tracked, with a button to
+ * stop, saying so when it's below the horizon.
+ */
+function showFollowNote(item: SkyItem | null, below = false) {
 	const note = binding?.followNote;
 	if (!note) return;
 	note.classList.toggle('is-visible', !!item);
+	note.classList.toggle('is-below', below);
 	if (!item) return;
 	const name = item.name.split(' · ')[0];
 	const place = getObserver().place;
-	const text = `${name} is below the horizon from ${place === 'your location' ? 'your location' : place}. Following it, with the ground hidden.`;
-	if (text !== followNoteText) {
-		followNoteText = text;
-		note.querySelector('[data-follow-text]')!.textContent = text;
+	if (`${name}|${place}` !== followNoteText) {
+		followNoteText = `${name}|${place}`;
+		for (const el of note.querySelectorAll('[data-follow-name]')) el.textContent = name;
+		note.querySelector('[data-follow-place]')!.textContent = place;
 	}
 }
 
@@ -1123,10 +1139,12 @@ function measureSkyMotion(dt: number) {
 function aimAt(item: SkyItem) {
 	const { eye, n, t, r } = surfaceFrame!;
 	const dir = worldOf(item).sub(eye).normalize();
-	const yaw = Math.atan2(dir.dot(r), dir.dot(t));
+	// Tracking, plus however far the visitor has panned from it.
+	const yaw = Math.atan2(dir.dot(r), dir.dot(t)) + (trackedItem === item ? trackOffset.yaw : 0);
 	lookTarget.yaw = yaw + 2 * Math.PI * Math.round((look.yaw - yaw) / (2 * Math.PI)); // the short way round
 	// Following it, the view tilts as far down as it takes, even below the horizon.
-	lookTarget.pitch = clamp(Math.asin(dir.dot(n)), -SKY_PITCH_MAX, SKY_PITCH_MAX);
+	const pitch = Math.asin(dir.dot(n)) + (trackedItem === item ? trackOffset.pitch : 0);
+	lookTarget.pitch = clamp(pitch, -SKY_PITCH_MAX, SKY_PITCH_MAX);
 }
 
 function onPointerUp(e: PointerEvent) {
@@ -1453,6 +1471,7 @@ function removeSky() {
 	driveCenter = motionCenter = null;
 	motionFade = 1;
 	showFollowNote(null);
+	trackOffset.yaw = trackOffset.pitch = 0;
 	hoveredItem = null;
 	trackedItem = null;
 }
@@ -1507,8 +1526,10 @@ function updateSky(dt: number, t: number) {
 	}
 	for (const c of skyConstellations) {
 		const altitudes = constellationAltitudes(c.items);
-		// Shown once fully risen, or while one of its stars is being followed.
-		const target = altitudes.every((sinAlt) => sinAlt > 0) || (trackedItem !== null && c.items.includes(trackedItem)) ? 1 : 0;
+		// Shown once fully risen, while one of its stars is being followed, or while the
+		// ground is hidden (following something below the horizon), when nothing is below it.
+		const target =
+			altitudes.every((sinAlt) => sinAlt > 0) || (trackedItem !== null && c.items.includes(trackedItem)) || groundHidden >= 1 ? 1 : 0;
 		c.opacity += (target - c.opacity) * Math.min(1, dt * 3);
 		c.stars.uniforms.uOpacity.value = c.opacity * skyFade.stars * motionFade;
 		c.lines.opacity = c.opacity * skyFade.lines * motionFade;
@@ -1539,14 +1560,18 @@ function updateSky(dt: number, t: number) {
 	// Checked against the lowest the object gets over the next frame and the next moments
 	// of the sky's clock (and where the view points now), so however fast time runs the
 	// ground is gone before the horizon could come into view: hidden at once, not faded.
-	const lowest = altitude === null ? null : Math.min(altitude, look.pitch, lowestAltitudeAhead(trackedItem!, now, dt));
+	// Where the view's center goes: the object's path, shifted by any panning.
+	const lowest =
+		altitude === null
+			? null
+			: Math.min(altitude + trackOffset.pitch, look.pitch, lowestAltitudeAhead(trackedItem!, now, dt) + trackOffset.pitch);
 	groundHidden = lowest !== null && groundWouldShow(lowest) ? 1 : groundHidden * Math.max(0, 1 - dt * 3);
-	showFollowNote(following ? trackedItem : null);
+	showFollowNote(view === 'surface' ? trackedItem : null, following);
 	// Let go below the usual limit: ease back up to it.
 	if (!trackedItem && !drag.active && lookTarget.pitch < SKY_PITCH_MIN) lookTarget.pitch = SKY_PITCH_MIN;
 	// Past the usual limit only while locked onto a disk: let go, and ease back out to it.
 	if (skyZoom.target < zoomFloor()) skyZoom.target = zoomFloor();
-	if (trackedItem && view === 'surface' && !busy && !drag.active) aimAt(trackedItem);
+	if (trackedItem && view === 'surface' && !busy) aimAt(trackedItem);
 	if (autoZoomOut) {
 		skyZoom.target = Math.min(NAKED_EYE_FOV, Math.max(skyZoom.target, SKY_ZOOM_MIN) * AUTO_ZOOM_OUT_RATE ** dt);
 		if (skyZoom.target >= NAKED_EYE_FOV) autoZoomOut = false;
@@ -1730,8 +1755,11 @@ function updateBodies(now: Date) {
 		const separationPx = moon ? dir.angleTo(jupiterDir) * pxPerRadian : Infinity;
 		const seen = smoothstep(limit + 1, limit - 1, b.magnitude) * (moon ? smoothstep(MOON_SEPARATION_PX * 0.6, MOON_SEPARATION_PX, separationPx) : 1);
 		item.hoverable = item.up && seen > 0.5;
-		// Saturn's rings skip the depth test (see skyBodies.ts), so hide bodies below the horizon outright.
-		entry.visual.object.visible = sinAlt > -0.02 || item === trackedItem;
+		// Saturn's rings skip the depth test (see skyBodies.ts), so the ground can't hide them:
+		// hide bodies below the horizon outright. Not while the ground itself is hidden
+		// (following something below the horizon): then neighbors, like Jupiter's moons,
+		// stay in view with it.
+		entry.visual.object.visible = sinAlt > -0.02 || item === trackedItem || groundHidden >= 1;
 
 		if (entry.glow && entry.glowPosition) {
 			entry.glowPosition.setXYZ(0, center.x, center.y, center.z);
