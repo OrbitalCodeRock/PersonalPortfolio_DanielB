@@ -30,10 +30,11 @@ import { deepSkyImages, planetMaps, type ImageCredit } from '../data/skyImages';
 import { fitPhoto, loadSkyImage, photoMaterial } from './skyImageLoader';
 import { comets } from '../data/comets';
 import { cometState, COMET_LIMIT } from './comets';
-import { createCometVisual, type CometVisual } from './skyComets';
+import { createCometVisual, PHOTO_PX as COMET_PHOTO_PX, type CometVisual } from './skyComets';
 import { cometImages } from '../data/skyImages';
 import { createMeteorShowers, METEOR_SPEEDUP, type MeteorShowers } from './skyMeteors';
 import { createTransients, type SkyTransients } from './skyTransients';
+import { deviceLook, startDeviceLook, stopDeviceLook } from './skyMotion';
 import { burstCountdown, transientAge } from './transients';
 import { entryAltAz, findEntry } from './skyFinder';
 import { applyStarLook, starCoronaMaterial, starSurfaceMaterial, STAR_LOOKS } from './skySun';
@@ -227,6 +228,9 @@ interface SkyItem {
 	hoverable: boolean; // up, and part of what's on show
 	detail?: string; // a second line under the name: a star's type, or an image credit while a real image shows
 	focusFov?: number; // field of view (degrees) to frame it when locking on, for things without a disk
+	// Things with a real photo: it shows once angle (radians) is px across on screen, so
+	// locking on zooms at least that far in.
+	photo?: { angle: number; px: number };
 	starType?: number; // stars: STAR_TYPES index
 	point?: { sizes: THREE.BufferAttribute; index: number; size: number }; // stars: their point of light, to hide behind the simulation
 }
@@ -357,6 +361,9 @@ const look = { yaw: 0, pitch: THREE.MathUtils.degToRad(4) };
 // Where the sky view is easing toward (zooming toward the cursor, focusing on a planet).
 // Dragging moves both together.
 const lookTarget = { ...look };
+// Steering the sky view by moving the phone (skyMotion.ts), and who to tell when it stops.
+let deviceLookOn = false;
+let deviceLookListener: ((on: boolean) => void) | null = null;
 const activeTweens = new Set<gsap.core.Tween>();
 const raycaster = new THREE.Raycaster();
 
@@ -474,6 +481,7 @@ export function initCosmos(canvas: HTMLCanvasElement) {
 		}
 		glidePan(dt);
 		if (view === 'surface' && !busy && celestial) driveTelescope();
+		followDevice();
 		// Tracking keeps easing onto the object even mid-drag (the drag pans around it).
 		if (view === 'surface' && !busy && (!drag.active || trackedItem)) {
 			if (trackedItem) trackLock = Math.min(1, trackLock + dt / TRACK_LOCK_SECONDS);
@@ -566,6 +574,7 @@ function unbindHome() {
  * default background.
  */
 export function reset() {
+	endDeviceLook();
 	if (arrived) {
 		arrived = false;
 		unbindHome();
@@ -717,6 +726,7 @@ function stopWideningView() {
 let widening: gsap.core.Tween | null = null;
 
 async function surfaceToPlanet() {
+	endDeviceLook();
 	stopWideningView();
 	trackedItem = null; // stop following, so the ground and the planet come back for the flight up
 	const { n, t, eye } = surfaceFrame!;
@@ -942,6 +952,7 @@ function onPointerMove(e: PointerEvent) {
  * offset is kept as it moves).
  */
 function panSky(dx: number, dy: number) {
+	if (deviceLookOn) return; // the phone steers
 	// Radians per pixel at the current zoom; turning sideways covers less sky the
 	// higher the view is tilted, so it turns faster there to keep up.
 	const speed = THREE.MathUtils.degToRad(camera.fov) / window.innerHeight;
@@ -956,6 +967,47 @@ function panSky(dx: number, dy: number) {
 	}
 	look.yaw = lookTarget.yaw = look.yaw - dx * sideways;
 	look.pitch = lookTarget.pitch = clamp(look.pitch + dy * speed, SKY_PITCH_MIN, SKY_PITCH_MAX);
+}
+
+/**
+ * Sky view: steer by moving the phone (on), or stop (off). Turning it on stops
+ * tracking. Resolves to whether it's on: false if the device can't (no sensors, or
+ * permission refused). Asks for permission where needed, so call it from a tap.
+ */
+export async function setDeviceLook(on: boolean): Promise<boolean> {
+	if (!on || view !== 'surface' || busy) {
+		endDeviceLook();
+		return false;
+	}
+	trackedItem = null;
+	autoZoomOut = false;
+	panGlide = null;
+	stopWideningView();
+	const heading = ((look.yaw % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+	deviceLookOn = await startDeviceLook(heading);
+	deviceLookListener?.(deviceLookOn);
+	return deviceLookOn;
+}
+
+/** Be told when steering by the phone starts or stops (it stops when locking onto something, for one). */
+export function watchDeviceLook(listener: ((on: boolean) => void) | null) {
+	deviceLookListener = listener;
+}
+
+function endDeviceLook() {
+	if (!deviceLookOn) return;
+	stopDeviceLook();
+	deviceLookOn = false;
+	deviceLookListener?.(false);
+}
+
+/** Each frame, while the phone steers: point the view where it points (the frame loop eases toward it). */
+function followDevice() {
+	if (!deviceLookOn || view !== 'surface' || busy) return;
+	const d = deviceLook();
+	if (!d) return;
+	lookTarget.yaw = d.heading + 2 * Math.PI * Math.round((look.yaw - d.heading) / (2 * Math.PI)); // the short way round
+	lookTarget.pitch = clamp(d.pitch, SKY_PITCH_MIN, SKY_PITCH_MAX);
 }
 
 /** Each frame: carry on a flick's glide, slowing to a stop. */
@@ -1040,6 +1092,7 @@ function zoomToward(after: number, screenX: number, screenY: number) {
  * following it as the sky turns (until the visitor drags to look elsewhere).
  */
 function focusOn(item: SkyItem) {
+	endDeviceLook();
 	panGlide = null;
 	trackedItem = item;
 	trackLock = 0;
@@ -1048,7 +1101,12 @@ function focusOn(item: SkyItem) {
 	stopWideningView();
 	aimAt(item);
 	// Fill about a third of the view's height; a star (a point) gets its close-up.
-	const fov = item.focusFov ?? (item.angularRadius ? THREE.MathUtils.radToDeg(item.angularRadius * 2) * 3 : STAR_FOCUS_FOV);
+	let fov = item.focusFov ?? (item.angularRadius ? THREE.MathUtils.radToDeg(item.angularRadius * 2) * 3 : STAR_FOCUS_FOV);
+	// Close enough for its photo, with some room to spare: tan(fov / 2) = height × angle / (2 × px).
+	if (item.photo) {
+		const px = item.photo.px * PHOTO_ZOOM_MARGIN;
+		fov = Math.min(fov, THREE.MathUtils.radToDeg(2 * Math.atan((window.innerHeight * item.photo.angle) / (2 * px))));
+	}
 	skyZoom.target = clamp(fov, zoomFloor(), SKY_ZOOM_MAX);
 }
 
@@ -1141,6 +1199,7 @@ export function lockOnto(key: string): boolean {
  */
 export function lookToward(alt: number, az: number, fov?: number) {
 	if (view !== 'surface' || busy) return;
+	endDeviceLook();
 	trackedItem = null;
 	autoZoomOut = false;
 	panGlide = null;
@@ -1176,7 +1235,7 @@ function celestialRotation(): THREE.Quaternion {
 function driveTelescope() {
 	const { n, t, r } = surfaceFrame!;
 	const turn = celestialRotation();
-	const weight = trackedItem || drag.active || pinch ? 0 : smoothstep(DRIVE_FOV[0], DRIVE_FOV[1], skyZoom.fov);
+	const weight = trackedItem || drag.active || pinch || deviceLookOn ? 0 : smoothstep(DRIVE_FOV[0], DRIVE_FOV[1], skyZoom.fov);
 	if (driveCenter && weight > 0) {
 		// Where last frame's center has been carried by the sky's turning.
 		const dir = driveCenter.clone().applyQuaternion(turn);
@@ -1320,6 +1379,8 @@ const DEEP_SKY_IMAGE_SCALE = 1.3;
 const IMAGE_SHARP_LIMIT = [3, 5];
 // Swap in a real photo once an object is this many pixels across, and a sharper one past the second size.
 const DEEP_SKY_PHOTO_PX = 120;
+// Locking onto something with a photo zooms in this much past where its photo appears.
+const PHOTO_ZOOM_MARGIN = 1.3;
 const DEEP_SKY_PHOTO_LARGE_PX = 500;
 
 /** A point on the celestial sphere (celestial group's frame) from RA (hours) and Dec (degrees). */
@@ -1441,6 +1502,7 @@ function buildSky(): { yaw: number; pitch: number } {
 			local: center,
 			angularRadius: size[0] / 2,
 			hoverable: false,
+			photo: deepSkyImages[o.catalog] ? { angle: size[0], px: DEEP_SKY_PHOTO_PX } : undefined,
 		};
 		// Brighter objects (lower magnitude) glow more strongly.
 		skyDeep.push({
@@ -1968,8 +2030,9 @@ function updateComets(now: Date, dt: number) {
 		item.hoverable = bright && aboveGround(constellationAltitudes([item])[0]);
 		item.name = `${comet.name} · ${state.distance.toFixed(2)} AU · magnitude ${state.magnitude.toFixed(1)}`;
 		item.detail = visual.showingPhoto() ? creditLine(cometImages[comet.id]) : comet.about;
-		// Frame the whole tail when locking on.
+		// Frame the whole tail when locking on (close enough for its photo, if it has one).
 		item.focusFov = clamp(THREE.MathUtils.radToDeg(visual.tailAngle()) * 1.8, 1, NAKED_EYE_FOV);
+		item.photo = cometImages[comet.id] ? { angle: visual.tailAngle(), px: COMET_PHOTO_PX } : undefined;
 	}
 }
 

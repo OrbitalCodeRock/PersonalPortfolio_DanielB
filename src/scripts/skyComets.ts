@@ -12,7 +12,7 @@ import { equatorialVector } from './sky';
 import { fitPhoto, loadSkyImage, photoMaterial } from './skyImageLoader';
 
 // Swap in the photo once the tail is this long on screen (pixels), and a sharper one past the second.
-const PHOTO_PX = 220;
+export const PHOTO_PX = 220;
 const PHOTO_LARGE_PX = 900;
 // Past this (pixels of tail on screen) the photo would be blown up blurry; the drawn comet takes over again.
 const PHOTO_MAX_PX = 3000;

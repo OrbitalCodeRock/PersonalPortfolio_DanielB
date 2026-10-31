@@ -67,6 +67,16 @@ const { items } = Astro.props;
 			<button class="zoom-out" type="button" title="Zoom back out to the naked eye" data-zoom-out>Zoom out</button>
 		</div>
 
+		<!-- Phones and tablets: steer the sky view by moving the device (shown only where it has the sensors). -->
+		<button class="motion-btn" type="button" aria-pressed="false" title="Look around by moving your phone" data-motion hidden>
+			<svg viewBox="0 0 24 24" aria-hidden="true">
+				<rect x="8" y="3" width="8" height="15" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"></rect>
+				<path d="M4 9a9 9 0 0 0 0 7M20 9a9 9 0 0 1 0 7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path>
+				<circle cx="12" cy="15.5" r="0.9" fill="currentColor"></circle>
+			</svg>
+			<span data-motion-label>Motion</span>
+		</button>
+
 		<!--
 			Time controls for the sky view: scrub through the day, type or pick a date and
 			time, and run time faster, slower, backward, or pause.
@@ -542,6 +552,35 @@ const { items } = Astro.props;
 	:global(body[data-view='surface']) .time-bar {
 		display: flex;
 	}
+	/* Steer by moving the phone: a toggle at the bottom right, in the sky view only. */
+	.motion-btn {
+		position: absolute;
+		right: 16px;
+		bottom: 112px;
+		z-index: 201;
+		display: none;
+		align-items: center;
+		gap: 6px;
+		padding: 6px 12px 6px 9px;
+		border: 1px solid var(--border);
+		border-radius: 999px;
+		background: rgba(5, 7, 15, 0.7);
+		color: var(--text-muted);
+		font: inherit;
+		font-size: 0.78rem;
+		cursor: pointer;
+	}
+	.motion-btn svg {
+		width: 18px;
+		height: 18px;
+	}
+	:global(body[data-view='surface']) .motion-btn:not([hidden]) {
+		display: inline-flex;
+	}
+	.motion-btn[aria-pressed='true'] {
+		border-color: var(--accent);
+		color: var(--accent);
+	}
 	.time-btn {
 		display: inline-flex;
 		align-items: center;
@@ -846,11 +885,14 @@ const { items } = Astro.props;
 		getView,
 		isBusy,
 		refreshSky,
+		setDeviceLook,
 		setView,
 		stopFollowing,
+		watchDeviceLook,
 		zoomOutSky,
 		type View,
 	} from '../scripts/cosmos';
+	import { deviceLookSupported } from '../scripts/skyMotion';
 	import {
 		allZones,
 		deviceZone,
@@ -1119,6 +1161,34 @@ const { items } = Astro.props;
 		followNote.addEventListener('pointerdown', (e) => e.stopPropagation(), { signal });
 		root.querySelector('[data-follow-stop]')!.addEventListener('click', stopFollowing, { signal });
 		root.querySelector('[data-zoom-out]')!.addEventListener('click', zoomOutSky, { signal });
+
+		// Steer by moving the phone, where the device has the sensors.
+		const motion = root.querySelector<HTMLButtonElement>('[data-motion]')!;
+		const motionLabel = motion.querySelector<HTMLElement>('[data-motion-label]')!;
+		motion.hidden = !deviceLookSupported();
+		motion.addEventListener('pointerdown', (e) => e.stopPropagation(), { signal });
+		const showMotion = (on: boolean) => {
+			motion.setAttribute('aria-pressed', String(on));
+			motion.title = on ? 'Stop moving the view with your phone' : 'Look around by moving your phone';
+		};
+		watchDeviceLook(showMotion);
+		signal.addEventListener('abort', () => watchDeviceLook(null));
+		let motionNote = 0;
+		motion.addEventListener(
+			'click',
+			async () => {
+				const want = motion.getAttribute('aria-pressed') !== 'true';
+				const on = await setDeviceLook(want);
+				showMotion(on);
+				// Asked to turn on but couldn't (no sensors, or permission refused): say so, briefly.
+				if (want && !on) {
+					motionLabel.textContent = 'Not available';
+					clearTimeout(motionNote);
+					motionNote = window.setTimeout(() => (motionLabel.textContent = 'Motion'), 3000);
+				}
+			},
+			{ signal },
+		);
 		// Opening the date picker from the keyboard closes the location menu too.
 		timeDate.addEventListener('focus', closePlaceMenu, { signal });
 		// Slider: scrub through the time of day (midnight to midnight in the sky's zone) on the date shown.
