@@ -41,18 +41,25 @@ const { items } = Astro.props;
 		<SkyFinder />
 
 		<!--
-			Shown while the telescope tracks something (name and place set by cosmos.ts), with a
+			Shown while the telescope tracks something (its name set by cosmos.ts), with a
 			button to stop; it says so when the object is below the horizon. Narrow screens show
 			only the short version.
 		-->
 		<div class="follow-note" role="status" data-follow-note>
 			<span class="follow-up">Tracking <strong data-follow-name></strong></span>
 			<span class="follow-down">
-				<strong data-follow-name></strong> is below the horizon<span class="follow-more">{' '}from <span data-follow-place></span>. Following it, with the ground hidden</span>.
+				Tracking <strong data-follow-name></strong> below the horizon
 			</span>
 			<button class="follow-stop" type="button" data-follow-stop>
 				<span class="follow-more">Stop tracking</span><span class="follow-less">Stop</span>
 			</button>
+		</div>
+
+		<!-- A gamma-ray burst about to go off: its countdown, filled in by cosmos.ts. -->
+		<div class="countdown" role="timer" data-countdown>
+			<span class="countdown-dot" aria-hidden="true"></span>
+			<strong data-countdown-name></strong>
+			<span data-countdown-text></span>
 		</div>
 
 		<div class="zoom-readout" data-zoom-box>
@@ -338,6 +345,52 @@ const { items } = Astro.props;
 		font-size: 0.7rem;
 		letter-spacing: 0;
 		text-align: center;
+	}
+
+	/* A gamma-ray burst about to go off: a countdown under the tracking note. */
+	.countdown {
+		position: absolute;
+		top: 136px;
+		left: 50%;
+		z-index: 201;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		max-width: min(520px, calc(100% - 32px));
+		padding: 5px 14px;
+		border: 1px solid rgba(170, 120, 255, 0.55);
+		border-radius: 999px;
+		background: rgba(22, 12, 44, 0.88);
+		color: var(--text);
+		font-size: 0.82rem;
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+		opacity: 0;
+		pointer-events: none;
+		transform: translate(-50%, -6px);
+		transition:
+			opacity 0.3s,
+			transform 0.3s;
+	}
+	.countdown:global(.is-visible) {
+		opacity: 1;
+		transform: translate(-50%, 0);
+	}
+	.countdown strong {
+		font-weight: 600;
+	}
+	.countdown-dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: rgb(170, 120, 255);
+	}
+	@media (max-width: 760px) {
+		.countdown {
+			top: 176px;
+			padding: 3px 10px;
+			font-size: 0.72rem;
+		}
 	}
 
 	/* Tracking something (or following it below the horizon): a note under the compass. */
@@ -1062,6 +1115,7 @@ const { items } = Astro.props;
 		zoomBox.addEventListener('pointerdown', (e) => e.stopPropagation(), { signal });
 		// The note about following something below the horizon: likewise, and its button stops following.
 		const followNote = root.querySelector<HTMLElement>('[data-follow-note]')!;
+		const countdown = root.querySelector<HTMLElement>('[data-countdown]')!;
 		followNote.addEventListener('pointerdown', (e) => e.stopPropagation(), { signal });
 		root.querySelector('[data-follow-stop]')!.addEventListener('click', stopFollowing, { signal });
 		root.querySelector('[data-zoom-out]')!.addEventListener('click', zoomOutSky, { signal });
@@ -1100,7 +1154,7 @@ const { items } = Astro.props;
 		showTime();
 		showZone();
 
-		bindHome({ eye, stage, cards, starTip, zoomBox, zoomReadout, followNote, onEgg: () => go('surface') });
+		bindHome({ eye, stage, cards, starTip, zoomBox, zoomReadout, followNote, countdown, onEgg: () => go('surface') });
 		eye.addEventListener('click', () => go('planet'), { signal });
 		root.querySelector('[data-back]')!.addEventListener('click', back, { signal });
 		document.addEventListener(

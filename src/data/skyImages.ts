@@ -244,6 +244,41 @@ export const deepSkyImages: Record<string, ImageCredit & { small: string; large:
 		"license": "Public domain",
 		"source": "https://commons.wikimedia.org/wiki/File:NGC7293_(2004).jpg"
 	},
+	"SNR G327.6+14.6": {
+		"small": "/sky/deep/sn1006-512.jpg",
+		"large": "/sky/deep/sn1006-1280.jpg",
+		"artist": "NASA/CXC (Smithsonian Institution)",
+		"license": "No known copyright restrictions",
+		"source": "https://commons.wikimedia.org/wiki/File:SN_1006.jpg"
+	},
+	"3C 10": {
+		"small": "/sky/deep/tycho-512.jpg",
+		"large": "/sky/deep/tycho-1280.jpg",
+		"artist": "NASA/CXC/Rutgers/J. Warren & J. Hughes et al.",
+		"license": "Public domain",
+		"source": "https://commons.wikimedia.org/wiki/File:Tycho-supernova-xray.jpg"
+	},
+	"3C 358": {
+		"small": "/sky/deep/kepler-512.jpg",
+		"large": "/sky/deep/kepler-1280.jpg",
+		"artist": "NASA/ESA/JHU/R. Sankrit & W. Blair",
+		"license": "Public domain",
+		"source": "https://commons.wikimedia.org/wiki/File:Keplers_supernova.jpg"
+	},
+	"Pa 30": {
+		"small": "/sky/deep/sn1181-512.jpg",
+		"large": "/sky/deep/sn1181-1280.jpg",
+		"artist": "NASA/CXC/U. Manitoba, ESA, NOIRLab/MDM/Dartmouth/R. Fesen, NASA/JPL/Caltech; G. Ferrand & J. English",
+		"license": "Public domain",
+		"source": "https://commons.wikimedia.org/wiki/File:Stunning_Echo_of_800-year-old_Explosion_(SNR_1181_Composite).jpg"
+	},
+	"SNR 1987A": {
+		"small": "/sky/deep/sn1987a-512.jpg",
+		"large": "/sky/deep/sn1987a-1280.jpg",
+		"artist": "NASA Goddard Space Flight Center (Hubble), cropped",
+		"license": "Public domain",
+		"source": "https://commons.wikimedia.org/wiki/File:New_Hubble_Observations_of_Supernova_1987A_Trace_Shock_Wave_(4954621859).jpg"
+	},
 	"M1": {
 		"small": "/sky/deep/m1-512.jpg",
 		"large": "/sky/deep/m1-1280.jpg",
@@ -310,7 +345,9 @@ export const deepSkyImages: Record<string, ImageCredit & { small: string; large:
 };
 
 // Comet photos, keyed by the ids in comets.ts; shown along the comet's tail when zoomed in.
-export const cometImages: Record<string, ImageCredit & { small: string; large: string }> = {
+// fov: the photo's long side on the sky (arcminutes), when known: it's then shown at
+// its true scale, rather than stretched to fit the drawn tail.
+export const cometImages: Record<string, ImageCredit & { small: string; large: string; fov?: number }> = {
 	"halley": {
 		"small": "/sky/comets/halley-512.jpg",
 		"large": "/sky/comets/halley-1280.jpg",
@@ -338,6 +375,21 @@ export const cometImages: Record<string, ImageCredit & { small: string; large: s
 		"artist": "E. Kolmhofer, H. Raab; Johannes-Kepler-Observatory, Linz, Austria",
 		"license": "CC BY-SA 3.0",
 		"source": "https://commons.wikimedia.org/wiki/File:Hyakutake_Color.jpg"
+	},
+	"tsuchinshan-atlas": {
+		"small": "/sky/comets/tsuchinshan-atlas-512.jpg",
+		"large": "/sky/comets/tsuchinshan-atlas-1280.jpg",
+		"artist": "paramsach (P. J. Singh)",
+		"license": "CC BY 2.0",
+		"source": "https://commons.wikimedia.org/wiki/File:Comet_C2023_A3_(Tsuchinshan%E2%80%93ATLAS)_featuring_detailed_structure_of_the_dust_tail.jpg"
+	},
+	"67p": {
+		"small": "/sky/comets/67p-512.jpg",
+		"large": "/sky/comets/67p-1280.jpg",
+		"artist": "NASA/JPL-Caltech/ZTF, cropped",
+		"license": "Public domain",
+		"source": "https://commons.wikimedia.org/wiki/File:67P_2021-11-11_image_ZTF-sso-616-zr-fov-13arcmin.png",
+		"fov": 13
 	},
 	"pons-brooks": {
 		"small": "/sky/comets/pons-brooks-512.jpg",

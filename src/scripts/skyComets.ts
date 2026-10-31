@@ -157,11 +157,16 @@ export function createCometVisual(comet: Comet, distance: number): CometVisual {
 			.catch(() => (photo = null)); // try again next time
 	}
 
-	/** Lay the photo along the current tail: head on the comet, tail along +y. */
+	/**
+	 * Lay the photo along the current tail: head on the comet, tail along +y. At its
+	 * true scale if its field of view is known, or else sized to the drawn tail.
+	 */
 	function placePhoto(mesh: THREE.Mesh) {
 		const { angle, reach, w, h, peak } = mesh.userData.fit;
 		// The head-to-middle distance is about half the visible tail.
-		const longSide = THREE.MathUtils.clamp((0.5 * tailLength) / reach, tailLength * 0.6, tailLength * 6);
+		const longSide = image?.fov
+			? 2 * distance * Math.tan(THREE.MathUtils.degToRad(image.fov / 60) / 2)
+			: THREE.MathUtils.clamp((0.5 * tailLength) / reach, tailLength * 0.6, tailLength * 6);
 		mesh.scale.set(longSide * w, longSide * h, 1);
 		mesh.rotation.z = Math.PI / 2 - angle;
 		mesh.position

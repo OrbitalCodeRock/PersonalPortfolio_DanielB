@@ -340,7 +340,7 @@ const label = (deg: number) => {
 
 <script>
 	import { getSkyLook, lockOnto, lookToward } from '../scripts/cosmos';
-	import { getObserver, setSkyTime, skyNow } from '../scripts/sky';
+	import { getObserver, playRealTime, setSkyTime, skyNow } from '../scripts/sky';
 	import { compassPoint, entryAltAz, findEntry, searchSky, visibility, type FinderEntry } from '../scripts/skyFinder';
 	import { formatMoment } from '../scripts/skyTime';
 
@@ -477,6 +477,7 @@ const label = (deg: number) => {
 						jump.title = 'Set the sky to that date and time, and look at it';
 						jump.addEventListener('click', () => {
 							setSkyTime(when.getTime());
+							if (vis.realTime) playRealTime(); // over in moments: watch it as it happens
 							close();
 							// Give the sky a moment to catch up to the new time before locking on.
 							setTimeout(() => goTo(entry), 150);

@@ -389,11 +389,14 @@ export function starCoronaMaterial(): THREE.ShaderMaterial {
 				// little behind the star (scaled up to match, so it looks the same size): zoomed
 				// far in, the whole star spans less depth than the depth buffer can tell apart,
 				// and level with its center the halo would flicker against the star's edge. Still
-				// well behind the Moon, which covers it in an eclipse.
+				// well behind the Moon, which covers it in an eclipse. Pushed back along the line
+				// of sight, not straight back from the camera, so it stays centered on the star
+				// wherever it is on screen.
 				vec4 center = modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0);
-				float distance = -center.z;
-				center.z -= ${CORONA_DEPTH_OFFSET.toFixed(2)};
-				center.xy += vPlane * uRadius * (distance + ${CORONA_DEPTH_OFFSET.toFixed(2)}) / distance;
+				float distance = length(center.xyz);
+				float farther = (distance + ${CORONA_DEPTH_OFFSET.toFixed(2)}) / distance;
+				center.xyz *= farther;
+				center.xy += vPlane * uRadius * farther;
 				gl_Position = projectionMatrix * center;
 			}
 		`,

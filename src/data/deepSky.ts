@@ -26,6 +26,8 @@ export interface DeepSkyObject {
 	angle: number;
 	mag: number;
 	distance: string; // shown on hover
+	born?: number; // supernova remnants: when its supernova faded from naked-eye view (ms since 1970); not shown before
+	ovalPhoto?: boolean; // its photo is cropped close, with light to the frame's edges: fade it out to an oval instead
 }
 
 export const deepSky: DeepSkyObject[] = [
@@ -52,7 +54,14 @@ export const deepSky: DeepSkyObject[] = [
 	{ name: 'Ring Nebula', catalog: 'M57', kind: 'planetary', ra: 18.893, dec: 33.03, size: [1.4, 1.0], angle: 60, mag: 8.8, distance: '2,300 light-years' },
 	{ name: 'Dumbbell Nebula', catalog: 'M27', kind: 'planetary', ra: 19.994, dec: 22.72, size: [8, 5.6], angle: 30, mag: 7.5, distance: '1,360 light-years' },
 	{ name: 'Helix Nebula', catalog: 'NGC 7293', kind: 'planetary', ra: 22.494, dec: -20.84, size: [16, 16], angle: 0, mag: 7.6, distance: '650 light-years' },
-	{ name: 'Crab Nebula', catalog: 'M1', kind: 'remnant', ra: 5.575, dec: 22.01, size: [7, 5], angle: 125, mag: 8.4, distance: '6,500 light-years' },
+	{ name: 'Crab Nebula', catalog: 'M1', kind: 'remnant', ra: 5.575, dec: 22.01, size: [7, 5], angle: 125, mag: 8.4, distance: '6,500 light-years', born: Date.UTC(1056, 6, 1) },
+	// The remnants of the other supernovae in src/data/transients.ts.
+	{ name: 'SN 1006 Remnant', catalog: 'SNR G327.6+14.6', kind: 'remnant', ra: 15.0467, dec: -41.94, size: [30, 30], angle: 0, mag: 12, distance: '7,200 light-years', born: Date.UTC(1008, 5, 1) },
+	{ name: "Tycho's Supernova Remnant", catalog: '3C 10', kind: 'remnant', ra: 0.4214, dec: 64.1436, size: [8, 8], angle: 0, mag: 12, distance: '8,000 light-years', born: Date.UTC(1574, 4, 1) },
+	{ name: "Kepler's Supernova Remnant", catalog: '3C 358', kind: 'remnant', ra: 17.5117, dec: -21.4833, size: [3.5, 3.5], angle: 0, mag: 12, distance: '20,000 light-years', born: Date.UTC(1605, 11, 1) },
+	{ name: 'Pa 30', catalog: 'Pa 30', kind: 'remnant', ra: 0.8864, dec: 67.5006, size: [3, 3], angle: 0, mag: 13, distance: '7,500 light-years', born: Date.UTC(1182, 1, 1) },
+	// Its ring of gas lit up by the blast is under 2 arcseconds across: it takes the telescope's deepest zoom.
+	{ name: 'SN 1987A Remnant', catalog: 'SNR 1987A', kind: 'remnant', ra: 5.5911, dec: -69.2697, size: [0.028, 0.02], angle: 85, mag: 14, distance: '168,000 light-years', born: Date.UTC(1988, 4, 1), ovalPhoto: true },
 	{ name: 'Veil Nebula', catalog: 'NGC 6960/6992', kind: 'remnant', ra: 20.85, dec: 30.7, size: [180, 180], angle: 0, mag: 7.0, distance: '2,400 light-years' },
 	// Star clusters
 	{ name: 'Pleiades', catalog: 'M45', kind: 'open-cluster', ra: 3.783, dec: 24.12, size: [110, 110], angle: 0, mag: 1.6, distance: '444 light-years' },

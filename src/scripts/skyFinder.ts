@@ -1,5 +1,6 @@
 // Search for the sky view: everything the simulation draws (stars, constellations,
-// galaxies, nebulae, clusters, the Moon and planets, comets, meteor showers),
+// galaxies, nebulae, clusters, the Moon and planets, comets, meteor showers,
+// supernovae and gamma-ray bursts),
 // where each one is for the current observer and simulated time, and when it
 // rises or sets. Well-known
 // objects the simulation leaves out are listed too, so a search for them says
@@ -8,9 +9,11 @@ import { comets } from '../data/comets';
 import { constellations, looseStars } from '../data/constellations';
 import { deepSky } from '../data/deepSky';
 import { meteorShowers } from '../data/meteorShowers';
+import { transients } from '../data/transients';
 import { COMET_LIMIT, cometState, visibleWindow } from './comets';
 import { solarSystem, type BodyName } from './ephemeris';
 import { showerActivity } from './meteors';
+import { GRB_LEAD_SECONDS, transientAge, transientShowing, transientState, transientWindow } from './transients';
 import { formatClock, formatDay, formatMoment, formatMonthYear, skyZone } from './skyTime';
 import { altAz, type Observer } from './sky';
 
@@ -35,6 +38,13 @@ export interface FinderEntry {
 	season?: (date: Date) => { from: Date; to: Date; past?: string } | null;
 	/** For picking the best of past nights: lower is better (a comet's magnitude). */
 	rank?: (date: Date) => number;
+	/**
+	 * For events over in moments (gamma-ray bursts): the moment to jump to, to watch
+	 * it from the start at real time, wherever it is in the sky, and what it was.
+	 */
+	moment?: { at: Date; note: string };
+	/** If it's never above the horizon from here when it can be seen: a moment to show it anyway, below the horizon. */
+	fallback?: Date;
 }
 
 const KIND_NAMES: Record<string, string> = {
@@ -239,6 +249,37 @@ export const finderEntries: FinderEntry[] = [
 			return { from: a.active || peakEve < date ? date : peakEve, to: a.window.end };
 		},
 	})),
+	...transients.map((t): FinderEntry => {
+		const w = transientWindow(t);
+		const supernova = t.kind === 'supernova';
+		const span = `${formatMonthYear(w.start)} – ${formatMonthYear(w.end)}`;
+		return {
+			key: `event:${t.id}`,
+			name: t.name,
+			kind: supernova ? `Supernova in ${t.constellation}` : `Gamma-ray burst · ${t.designation}`,
+			terms: `${t.name} ${t.designation} ${t.designation.replace(/\s+/g, '')} ${supernova ? 'supernova' : 'gamma ray burst grb'} ${t.constellation} ${t.terms ?? ''}`.toLowerCase(),
+			included: true,
+			position: () => ({ ra: t.ra, dec: t.dec }),
+			condition: (date: Date) => {
+				const s = transientState(t, date);
+				// A burst counts from a moment before it, to be watching when it goes off.
+				const ok = transientShowing(t, date) || (!supernova && s.since > -GRB_LEAD_SECONDS && s.since < 0);
+				if (ok) return { ok, note: `${s.mag !== null ? `magnitude ${s.mag.toFixed(1)} · ` : ''}${transientAge(t, s.since)} · ${t.about}` };
+				if (supernova) return { ok, note: date > w.end ? 'Faded long ago' : 'Not yet exploded' };
+				return { ok, note: `A flash that lasted moments, ${formatMoment(new Date(t.trigger), date)}` };
+			},
+			...(supernova
+				? {
+						season: (date: Date) =>
+							date > w.end
+								? { from: w.start, to: w.end, past: `seen ${span}` }
+								: { from: new Date(Math.max(date.getTime(), w.start.getTime())), to: w.end },
+						rank: (date: Date) => transientState(t, date).mag ?? Infinity,
+						fallback: new Date(t.peak),
+					}
+				: { moment: { at: new Date(t.trigger - 15000), note: t.about } }),
+		};
+	}),
 	...deepSky.map((o) => ({
 		key: `deep:${o.catalog}`,
 		name: o.name,
@@ -246,6 +287,20 @@ export const finderEntries: FinderEntry[] = [
 		terms: `${o.name} ${o.catalog} ${o.catalog.replace(/\s+/g, '')} ${ALIASES[o.catalog] ?? ''}`.toLowerCase(),
 		included: true,
 		position: () => ({ ra: o.ra, dec: o.dec }),
+		// A supernova remnant: shown once its supernova has faded.
+		...(o.born !== undefined
+			? {
+					condition: (date: Date) =>
+						date.getTime() >= o.born!
+							? { ok: true, note: 'left by a supernova' }
+							: { ok: false, note: `Not shown until its supernova fades, in ${new Date(o.born!).getUTCFullYear()}` },
+					// Its next sighting: from when it appears.
+					season: (date: Date) => {
+						const from = Math.max(date.getTime(), o.born!);
+						return { from: new Date(from), to: new Date(from + 400 * DAY_MS) };
+					},
+				}
+			: {}),
 	})),
 	...NOT_INCLUDED.map(([name, kind]) => ({
 		key: '',
@@ -314,6 +369,7 @@ export interface Visibility {
 	/** When not in view: a good moment to see it (up high), to jump the clock to. */
 	goTo?: Date;
 	goToPast?: boolean; // that moment is in the past (a comet that isn't coming back soon)
+	realTime?: boolean; // watch it at real time from there (an event over in moments)
 }
 
 const STEP_MS = 10 * 60 * 1000; // rise and set times to the nearest ten minutes
@@ -400,6 +456,12 @@ export function visibility(entry: FinderEntry, obs: Observer, date: Date): Visib
 		const group = entry.group && entry.kind !== 'Constellation' ? `all of ${entry.group}` : 'it';
 		reason = `Not shown yet · ${where} · appears once ${group} is above the horizon`;
 	} else reason = `Not visible now · ${where}`;
+	// Over in moments: jump to just before it, wherever it is in the sky (unless it's happening now).
+	if (entry.moment) {
+		if (condition?.ok) return { ...base, text: `Happening now · ${where} · ${condition.note}` };
+		const { at, note } = entry.moment;
+		return { ...base, text: `${reason} · ${note}`, goTo: at, goToPast: at < date, realTime: true };
+	}
 	type Season = { from: Date; to: Date; past?: string };
 	const first: Season | null = entry.season ? entry.season(date) : { from: date, to: new Date(date.getTime() + 400 * DAY_MS) };
 	if (!first) return { ...base, text: `${reason} · not bright enough to see in the coming years` };
@@ -415,6 +477,10 @@ export function visibility(entry: FinderEntry, obs: Observer, date: Date): Visib
 		sighting = sightingIn(season);
 	}
 	if (!sighting) {
+		if (entry.fallback) {
+			const when = season.past ?? `${formatMonthYear(season.from)} – ${formatMonthYear(season.to)}`;
+			return { ...base, text: `${reason} · ${when} · below the horizon from here`, goTo: entry.fallback, goToPast: entry.fallback < date };
+		}
 		const never = up || entry.season ? "can't be seen from here then" : 'never rises from here';
 		return { ...base, text: `${reason} · ${season.past ?? never}` };
 	}

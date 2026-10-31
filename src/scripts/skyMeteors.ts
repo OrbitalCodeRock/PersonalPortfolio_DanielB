@@ -16,6 +16,9 @@ export const METEOR_SPEEDUP = 100;
 const MAX_PER_SECOND = 6;
 const POOL = 32; // meteors on screen at once, at most
 const RAD = Math.PI / 180;
+// The ring marking an active shower's radiant: its size on screen (pixels) and strength.
+const RADIANT_PX = 14;
+const RADIANT_OPACITY = 0.35;
 
 interface Meteor {
 	start: THREE.Vector3; // unit vectors, celestial frame
@@ -42,10 +45,11 @@ function ringTexture(): THREE.Texture {
 	canvas.width = canvas.height = size;
 	const ctx = canvas.getContext('2d')!;
 	ctx.strokeStyle = 'rgba(255,214,150,0.9)';
-	ctx.lineWidth = 3;
-	ctx.setLineDash([6, 5]);
+	// Drawn small on screen (RADIANT_PX), so a thick line and long dashes stay legible.
+	ctx.lineWidth = 6;
+	ctx.setLineDash([12, 9]);
 	ctx.beginPath();
-	ctx.arc(size / 2, size / 2, size / 2 - 4, 0, Math.PI * 2);
+	ctx.arc(size / 2, size / 2, size / 2 - 5, 0, Math.PI * 2);
 	ctx.stroke();
 	return new THREE.CanvasTexture(canvas);
 }
@@ -62,7 +66,7 @@ export function createMeteorShowers(distance: number): MeteorShowers {
 		const radiant = new THREE.Vector3(...equatorialVector(shower.ra, shower.dec));
 		const marker = new THREE.Points(
 			new THREE.BufferGeometry().setFromPoints([radiant.clone().multiplyScalar(distance)]),
-			new THREE.PointsMaterial({ map: ring, size: 26, sizeAttenuation: false, transparent: true, depthWrite: false, opacity: 0 }),
+			new THREE.PointsMaterial({ map: ring, size: RADIANT_PX, sizeAttenuation: false, transparent: true, depthWrite: false, opacity: 0 }),
 		);
 		object.add(marker);
 		return { shower, radiant, marker, activity: showerActivity(shower, new Date()), spawn: 0 };
@@ -119,7 +123,7 @@ export function createMeteorShowers(distance: number): MeteorShowers {
 			for (const s of showers) {
 				const height = sinAlt(s.radiant);
 				const up = s.activity.active && height > 0;
-				(s.marker.material as THREE.PointsMaterial).opacity = up ? opacity * 0.5 : 0;
+				(s.marker.material as THREE.PointsMaterial).opacity = up ? opacity * RADIANT_OPACITY : 0;
 				if (!up || opacity <= 0) continue;
 				// Fewer meteors while the radiant is low (half of them would come from below the horizon).
 				const simulated = (s.activity.rate / 3600) * height * Math.abs(rate); // meteors per real second, for real

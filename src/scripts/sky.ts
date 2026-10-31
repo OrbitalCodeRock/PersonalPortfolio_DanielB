@@ -228,6 +228,13 @@ export function setSkyTime(ms: number) {
 	clockReal = realNow();
 }
 
+/** Run the clock forward at real time from where it is (to watch something brief). */
+export function playRealTime() {
+	rebase();
+	speedIndex = REAL_TIME;
+	paused = false;
+}
+
 /** Back to the present, at real-time speed. */
 export function resetClock() {
 	clockSim = Date.now();

@@ -33,6 +33,8 @@ import { cometState, COMET_LIMIT } from './comets';
 import { createCometVisual, type CometVisual } from './skyComets';
 import { cometImages } from '../data/skyImages';
 import { createMeteorShowers, METEOR_SPEEDUP, type MeteorShowers } from './skyMeteors';
+import { createTransients, type SkyTransients } from './skyTransients';
+import { burstCountdown, transientAge } from './transients';
 import { entryAltAz, findEntry } from './skyFinder';
 import { applyStarLook, starCoronaMaterial, starSurfaceMaterial, STAR_LOOKS } from './skySun';
 import { shortDate } from './meteors';
@@ -46,7 +48,8 @@ export interface HomeBinding {
 	cards: HTMLElement[];
 	starTip: HTMLElement; // shows a star's name in the sky view
 	zoomBox: HTMLElement; // holds the magnification and the zoom-out button; shown once zoomed in
-	followNote: HTMLElement; // "following it below the horizon" note; its [data-follow-name] and [data-follow-place] get filled in
+	followNote: HTMLElement; // "Tracking X" note (and "below the horizon"); its [data-follow-name] gets filled in
+	countdown: HTMLElement; // a gamma-ray burst's countdown; its [data-countdown-name] and [data-countdown-text] get filled in
 	zoomReadout: HTMLElement; // telescope magnification in the sky view
 	onEgg: () => void;
 }
@@ -250,6 +253,8 @@ let skyConstellations: {
 let skyComets: { item: SkyItem; visual: CometVisual; comet: (typeof comets)[number] }[] = [];
 // Meteor showers: radiants and falling meteors while each shower is active.
 let skyMeteors: { showers: MeteorShowers; items: SkyItem[] } | null = null;
+// Supernovae and gamma-ray bursts, each shown while it's bright (or its gamma rays arrive).
+let skyTransients: { events: SkyTransients; items: SkyItem[] } | null = null;
 // Famous stars without a stick figure (looseStars), each shown whenever it's up.
 let skyLoose: { items: SkyItem[]; stars: THREE.ShaderMaterial } | null = null;
 // The star simulation shown on the star being zoomed into (one at a time).
@@ -279,6 +284,8 @@ let skyDeep: {
 	catalog: string;
 	round: boolean; // nearly circular: keep the photo's own orientation
 	photo: DeepSkyPhoto | null; // a real photo, loaded once the telescope zooms in on it
+	born?: number; // supernova remnants: not there before this (ms since 1970)
+	ovalPhoto?: boolean; // fade its photo out to an oval, not the frame's edges
 }[] = [];
 let lastDeepSkyUpdate = 0;
 
@@ -286,6 +293,7 @@ interface DeepSkyPhoto {
 	material: THREE.ShaderMaterial;
 	stage: 'loading' | 'small' | 'large';
 	mix: number; // 0 = painted image, 1 = photo
+	span: number; // the photo's long side on the sky (radians), once placed
 }
 let hoveredItem: SkyItem | null = null;
 let trackedItem: SkyItem | null = null; // a body the telescope is following
@@ -1096,11 +1104,9 @@ function showFollowNote(item: SkyItem | null, below = false) {
 	note.classList.toggle('is-below', below);
 	if (!item) return;
 	const name = item.name.split(' · ')[0];
-	const place = getObserver().place;
-	if (`${name}|${place}` !== followNoteText) {
-		followNoteText = `${name}|${place}`;
+	if (name !== followNoteText) {
+		followNoteText = name;
 		for (const el of note.querySelectorAll('[data-follow-name]')) el.textContent = name;
-		note.querySelector('[data-follow-place]')!.textContent = place;
 	}
 }
 
@@ -1302,10 +1308,16 @@ const DEEP_SKY_DISTANCE = SKY_RADIUS * 1.01; // just behind the stars
 const COMET_DISTANCE = SKY_RADIUS * 0.98; // in front of the stars, behind the Moon and planets
 const STAR_SIM_DISTANCE = SKY_RADIUS * 0.99; // just in front of the star it stands in for
 const METEOR_DISTANCE = SKY_RADIUS * 0.96; // in front of everything: meteors burn up in our own air
-// Deep-sky objects smaller than this on screen (pixels) are drawn this big, and dimmer, so they can be found.
-const DEEP_SKY_MIN_PX = 14;
+const TRANSIENT_DISTANCE = SKY_RADIUS * 0.985; // just in front of the stars
+// Deep-sky objects smaller than this on screen are drawn this big, and dimmer, so they can be
+// found: a share of the screen's height (14 pixels on an 800-pixel screen), so it keeps pace
+// with the stars, which scale with the screen too.
+const DEEP_SKY_MIN_SHARE = 14 / 800;
 // The images fade out toward their edges, so draw them a bit larger than the object's catalog size.
 const DEEP_SKY_IMAGE_SCALE = 1.3;
+// Zoomed past an image's resolution, it fades away (photos and painted images alike)
+// between these many screen pixels per image pixel, rather than turning into a blur.
+const IMAGE_SHARP_LIMIT = [3, 5];
 // Swap in a real photo once an object is this many pixels across, and a sharper one past the second size.
 const DEEP_SKY_PHOTO_PX = 120;
 const DEEP_SKY_PHOTO_LARGE_PX = 500;
@@ -1440,6 +1452,8 @@ function buildSky(): { yaw: number; pitch: number } {
 			catalog: o.catalog,
 			round: o.size[1] / o.size[0] > 0.8,
 			photo: null,
+			born: o.born,
+			ovalPhoto: o.ovalPhoto,
 		});
 		skyItems.push(item);
 	});
@@ -1481,6 +1495,21 @@ function buildSky(): { yaw: number; pitch: number } {
 			focusFov: NAKED_EYE_FOV,
 		}));
 		skyMeteors = { showers, items };
+		skyItems.push(...items);
+	}
+
+	// Supernovae and gamma-ray bursts; updateSky brightens and fades them with the clock.
+	{
+		const events = createTransients(TRANSIENT_DISTANCE);
+		celestial.add(events.object);
+		const items = events.events.map(({ transient, dir }) => ({
+			key: `event:${transient.id}`,
+			name: transient.name,
+			local: dir.clone().multiplyScalar(TRANSIENT_DISTANCE),
+			hoverable: false,
+			focusFov: NAKED_EYE_FOV / 4,
+		}));
+		skyTransients = { events, items };
 		skyItems.push(...items);
 	}
 
@@ -1647,6 +1676,8 @@ function removeSky(keepShaders = false) {
 	skyDeep = [];
 	skyComets = [];
 	skyMeteors = null;
+	skyTransients = null;
+	showCountdown(null, null);
 	starSim = null;
 	groundHidden = 0;
 	driveCenter = motionCenter = null;
@@ -1725,7 +1756,7 @@ function updateSky(dt: number, t: number) {
 		c.lines.opacity = c.opacity * skyFade.lines * motionFade * (1 - (starSim?.mix ?? 0));
 		c.items.forEach((item, i) => (item.hoverable = c.opacity > 0.5 && aboveGround(altitudes[i])));
 	}
-	updateDeepSky();
+	updateDeepSky(now);
 	updateComets(now, dt);
 	if (skyMeteors) {
 		const { showers, items } = skyMeteors;
@@ -1737,6 +1768,7 @@ function updateSky(dt: number, t: number) {
 			items[i].detail = `Peaks ${shortDate(activity.window.peak)} · about ${Math.round(activity.rate)} an hour now · shown ${METEOR_SPEEDUP}× as often, more with the clock sped up · from ${shower.parent}`;
 		});
 	}
+	updateTransients(now);
 	updateBodies(now);
 	updateStarSim(dt);
 
@@ -1769,21 +1801,63 @@ function updateSky(dt: number, t: number) {
 	}
 }
 
+let countdownText = '';
+
+/** Show (or with nulls, hide) a gamma-ray burst's countdown. */
+function showCountdown(name: string | null, countdown: string | null) {
+	const box = binding?.countdown;
+	if (!box) return;
+	box.classList.toggle('is-visible', !!name && !!countdown);
+	if (!name || !countdown || `${name}|${countdown}` === countdownText) return;
+	countdownText = `${name}|${countdown}`;
+	box.querySelector('[data-countdown-name]')!.textContent = name;
+	box.querySelector('[data-countdown-text]')!.textContent = countdown;
+}
+
+/** Each frame: brighten and fade the supernovae and gamma-ray bursts, and keep their hover text current. */
+function updateTransients(now: Date) {
+	if (!skyTransients) return showCountdown(null, null);
+	const { events, items } = skyTransients;
+	const limit = NAKED_EYE_LIMIT + MAGNITUDE_PER_DECADE * Math.log10(Math.max(1, NAKED_EYE_FOV / camera.fov));
+	const pxPerRadian = window.innerHeight / 2 / Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
+	events.update(now, skyFade.stars, limit, { zoom: NAKED_EYE_FOV / camera.fov, pxPerRadian, heightPx: window.innerHeight });
+	events.events.forEach(({ transient: t, state }, i) => {
+		const item = items[i];
+		const showing = state.gamma > 0.02 || (state.mag !== null && state.mag < limit);
+		item.hoverable = showing && aboveGround(constellationAltitudes([item])[0]);
+		const brightness = state.mag !== null ? `magnitude ${state.mag.toFixed(1)}` : 'gamma rays only (false color)';
+		item.name = `${t.name} · ${brightness}`;
+		const kind = t.kind === 'supernova' ? 'Supernova' : 'Gamma-ray burst';
+		item.detail = `${kind} ${t.name === t.designation ? '' : `${t.designation} `}in ${t.constellation} · ${transientAge(t, state.since)} · ${t.distance} away`;
+	});
+	// A burst about to go off: count down to it.
+	let countdown: { name: string; text: string } | null = null;
+	for (const { transient: t, state } of events.events) {
+		if (t.kind !== 'grb' || view !== 'surface') continue;
+		const text = burstCountdown(t, state.since);
+		if (text) countdown = { name: t.designation, text };
+	}
+	showCountdown(countdown?.name ?? null, countdown?.text ?? null);
+}
+
 /**
  * Each frame: fade the galaxies, nebulae and clusters with the sky, mark which are
- * up (for hovering), and keep small ones at least DEEP_SKY_MIN_PX across so they
+ * up (for hovering), and keep small ones at least DEEP_SKY_MIN_SHARE across so they
  * can be spotted, dimming them to match, until the telescope zooms in enough to
  * show them at their true size.
  */
-function updateDeepSky() {
+function updateDeepSky(date: Date) {
 	const pxPerRadian = window.innerHeight / 2 / Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
 	const now = performance.now();
 	const dt = lastDeepSkyUpdate ? Math.min(0.1, (now - lastDeepSkyUpdate) / 1000) : 0;
 	lastDeepSkyUpdate = now;
 	for (const d of skyDeep) {
-		d.item.hoverable = aboveGround(constellationAltitudes([d.item])[0]);
+		// A supernova remnant shows once its supernova has faded.
+		const formed = d.born === undefined || date.getTime() >= d.born;
+		d.mesh.visible = formed;
+		d.item.hoverable = formed && aboveGround(constellationAltitudes([d.item])[0]);
 		const truePx = d.size[0] * pxPerRadian;
-		const enlarge = Math.max(1, DEEP_SKY_MIN_PX / truePx);
+		const enlarge = Math.max(1, (DEEP_SKY_MIN_SHARE * window.innerHeight) / truePx);
 		const scale = 2 * DEEP_SKY_DISTANCE * DEEP_SKY_IMAGE_SCALE * enlarge;
 		d.mesh.scale.set(scale * Math.tan(d.size[1] / 2), scale * Math.tan(d.size[0] / 2), 1);
 
@@ -1802,16 +1876,29 @@ function updateDeepSky() {
 				.catch(() => (photo.stage = 'small'));
 		}
 		const photo = d.photo;
-		const ready = photo !== null && photo.material.uniforms.uMap.value !== null;
-		if (photo) {
-			const target = ready && truePx > DEEP_SKY_PHOTO_PX ? 1 : 0;
+		const map = photo?.material.uniforms.uMap.value as THREE.Texture | null | undefined;
+		let photoSharp = 1;
+		if (photo && map) {
+			const target = truePx > DEEP_SKY_PHOTO_PX ? 1 : 0;
 			photo.mix = target > photo.mix ? Math.min(target, photo.mix + dt * 2) : Math.max(target, photo.mix - dt * 2);
-			photo.material.uniforms.uOpacity.value = skyFade.stars * motionFade * photo.mix;
+			const image = map.image as { width: number; height: number };
+			photoSharp = sharpness((photo.span * pxPerRadian) / Math.max(image.width, image.height));
+			photo.material.uniforms.uOpacity.value = formed ? skyFade.stars * motionFade * photo.mix * photoSharp : 0;
 		}
 		const mix = photo?.mix ?? 0;
-		d.material.opacity = skyFade.stars * motionFade * d.brightness * Math.max(0.3, enlarge ** -0.6) * (1 - mix);
-		d.item.detail = mix > 0.5 ? creditLine(image) : undefined;
+		// The painted image: its DEEP_SKY_ART_PX pixels span the object's size, enlarged.
+		const artSharp = sharpness((truePx * DEEP_SKY_IMAGE_SCALE * enlarge) / DEEP_SKY_ART_PX);
+		d.material.opacity = skyFade.stars * motionFade * d.brightness * Math.max(0.3, enlarge ** -0.6) * (1 - mix) * artSharp;
+		d.item.detail = mix * photoSharp > 0.5 ? creditLine(image) : undefined;
 	}
+}
+
+// The painted deep-sky images' size (pixels; deepSkyArt.ts).
+const DEEP_SKY_ART_PX = 256;
+
+/** How much of an image to show at this many screen pixels per image pixel: all of it while sharp, none once blurry. */
+function sharpness(screenPerImagePx: number): number {
+	return 1 - smoothstep(IMAGE_SHARP_LIMIT[0], IMAGE_SHARP_LIMIT[1], screenPerImagePx);
 }
 
 /** Whether an object's center is on screen, or close to it. */
@@ -1829,7 +1916,7 @@ function inView(object: THREE.Object3D): boolean {
  */
 function loadDeepSkyPhoto(d: (typeof skyDeep)[number], url: string) {
 	const material = photoMaterial();
-	const photo: DeepSkyPhoto = { material, stage: 'loading', mix: 0 };
+	const photo: DeepSkyPhoto = { material, stage: 'loading', mix: 0, span: 0 };
 	d.photo = photo;
 	loadSkyImage(url)
 		.then(({ texture, bitmap }) => {
@@ -1839,6 +1926,7 @@ function loadDeepSkyPhoto(d: (typeof skyDeep)[number], url: string) {
 			const longSide = clamp(major / (4 * fit.spread), major * 1.2, major * 6);
 			const width = longSide * Math.min(1, fit.aspect);
 			const height = longSide * Math.min(1, 1 / fit.aspect);
+			photo.span = longSide;
 			const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), material);
 			mesh.scale.set(2 * DEEP_SKY_DISTANCE * Math.tan(width / 2), 2 * DEEP_SKY_DISTANCE * Math.tan(height / 2), 1);
 			// Turn the photo's long axis onto the object's (the painted image's y axis).
@@ -1857,6 +1945,7 @@ function loadDeepSkyPhoto(d: (typeof skyDeep)[number], url: string) {
 			pivot.add(mesh);
 			d.mesh.parent?.add(pivot);
 			material.uniforms.uBackground.value.copy(fit.background);
+			if (d.ovalPhoto) material.uniforms.uRound.value = 1;
 			material.uniforms.uMap.value = texture;
 			photo.stage = 'small';
 		})

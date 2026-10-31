@@ -64,6 +64,9 @@ export interface CometState {
 	tailEnd: { ra: number; dec: number };
 }
 
+// Absolute magnitude past which a comet's tail falls off with its light (see cometState).
+const FAINT_COMET_H = 6.5;
+
 export function cometState(c: Comet, date: Date): CometState {
 	const perihelion = Date.parse(c.T);
 	let days = (date.getTime() - perihelion) / DAY_MS;
@@ -74,8 +77,10 @@ export function cometState(c: Comet, date: Date): CometState {
 	const r = seen.sunDistance;
 	const magnitude = c.H + 5 * Math.log10(seen.distance) + c.K * Math.log10(r);
 	// Tails grow as the Sun heats the comet: tens of millions of km near the Sun,
-	// none out past Jupiter. Brighter (bigger, more active) comets grow longer ones.
-	const activity = Math.min(1, Math.max(0.15, (12 - c.H) / 10));
+	// none out past Jupiter. Brighter (bigger, more active) comets grow longer ones;
+	// faint ones (absolute magnitude past about 6.5) shed dust in proportion to their
+	// light, so their tails fall off with it: 67P's is a few hundred thousand km.
+	const activity = c.H <= FAINT_COMET_H ? Math.min(1, (12 - c.H) / 10) : ((12 - FAINT_COMET_H) / 10) * 10 ** (-0.4 * (c.H - FAINT_COMET_H));
 	const tailLength = r > 4 ? 0 : Math.min(0.6, 0.2 / r ** 1.5) * activity;
 	return { ...seen, magnitude, tailLength, tailEnd: seen.outward(tailLength) };
 }
