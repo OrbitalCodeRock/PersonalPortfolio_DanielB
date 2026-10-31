@@ -14,7 +14,7 @@ import * as THREE from 'three';
 import type { BodyName } from './ephemeris';
 import { planetMaps } from '../data/skyImages';
 import { loadSkyImage } from './skyImageLoader';
-import { sunCoronaMaterial, sunSurfaceMaterial } from './skySun';
+import { applyStarLook, starCoronaMaterial, starSurfaceMaterial, SUN_LOOK } from './skySun';
 
 export interface BodyVisual {
 	object: THREE.Group; // add it to the celestial sphere group
@@ -320,7 +320,7 @@ function ringMaterial(flattening: number): THREE.ShaderMaterial {
 export function createBodyVisual(name: BodyName): BodyVisual {
 	const object = new THREE.Group();
 	// The Sun is a live simulation (skySun.ts) rather than a painted or mapped globe.
-	const material = name === 'Sun' ? sunSurfaceMaterial() : bodyMaterial(name);
+	const material = name === 'Sun' ? starSurfaceMaterial() : bodyMaterial(name);
 	// Enough segments that the edge stays round even filling the screen at the deepest
 	// zoom (and, for the Sun, meets its round corona without slivers).
 	const geometry = name === 'Sun' ? new THREE.SphereGeometry(1, 384, 192) : new THREE.SphereGeometry(1, 160, 80);
@@ -334,7 +334,8 @@ export function createBodyVisual(name: BodyName): BodyVisual {
 	// The Sun's corona, chromosphere and prominences, around the disk.
 	let corona: THREE.ShaderMaterial | null = null;
 	if (name === 'Sun') {
-		corona = sunCoronaMaterial();
+		corona = starCoronaMaterial();
+		applyStarLook(material, corona, SUN_LOOK);
 		const halo = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), corona);
 		halo.renderOrder = 2;
 		halo.frustumCulled = false; // a billboard: sized in its shader, not by its geometry

@@ -33,6 +33,7 @@ import { createCometVisual, type CometVisual } from './skyComets';
 import { cometImages } from '../data/skyImages';
 import { createMeteorShowers, METEOR_SPEEDUP, type MeteorShowers } from './skyMeteors';
 import { entryAltAz, findEntry } from './skyFinder';
+import { applyStarLook, starCoronaMaterial, starSurfaceMaterial, STAR_LOOKS } from './skySun';
 import { shortDate } from './meteors';
 
 // inside is the page background after diving into the planet (see reset()).
@@ -109,6 +110,15 @@ const SKY_PITCH_MAX = 1.55;
 // starts turning with the stars, as a telescope's motor drive does, and fully by the
 // second; wider views stay put with the ground while the sky wheels past.
 const DRIVE_FOV = [25, 10];
+// Zoomed in on a star, its point gives way to a live simulation of a star of its type
+// (skySun.ts) between these magnifications; it's the star locked onto, or else the
+// one nearest the middle of the view (within STAR_SIM_PICK_PX).
+const STAR_SIM_ZOOM = [10, 24];
+const STAR_SIM_PICK_PX = 90;
+// Past this magnification the simulation grows in step with the zoom (see starSimRadiusPx);
+// locked onto a star, the telescope can zoom until it's this many screens tall.
+const STAR_SIM_LINEAR = 1000;
+const STAR_SIM_MAX_SCREENS = 20;
 // Star-field motion on screen per frame (pixels) at which the background (stars,
 // constellation lines, galaxies, comets) starts to fade, and is gone: past that it
 // only strobes. Measured from the clock's motion, not from looking around.
@@ -214,6 +224,8 @@ interface SkyItem {
 	detail?: string; // a second line under the name: a star's type, or an image credit while a real image shows
 	focusFov?: number; // field of view (degrees) to frame it when locking on, for things without a disk
 	up?: boolean; // above the horizon, for things that can be up yet too faint to hover (the telescope can still lock on)
+	starType?: number; // stars: STAR_TYPES index
+	point?: { sizes: THREE.BufferAttribute; index: number; size: number }; // stars: their point of light, to hide behind the simulation
 }
 
 /** A short credit line for the hover tip ("Image: NASA, ESA · Public domain"); the credits page has the full text. */
@@ -236,6 +248,15 @@ let skyComets: { item: SkyItem; visual: CometVisual; comet: (typeof comets)[numb
 let skyMeteors: { showers: MeteorShowers; items: SkyItem[] } | null = null;
 // Famous stars without a stick figure (looseStars), each shown whenever it's up.
 let skyLoose: { items: SkyItem[]; stars: THREE.ShaderMaterial } | null = null;
+// The star simulation shown on the star being zoomed into (one at a time).
+let starSim: {
+	group: THREE.Group;
+	sphere: THREE.Mesh;
+	surface: THREE.ShaderMaterial;
+	corona: THREE.ShaderMaterial;
+	item: SkyItem | null;
+	mix: number; // 0 = the star's point of light, 1 = the simulation
+} | null = null;
 // The planets and Moon: their visuals, and a point of light for when the disk is too small to see.
 let skyBodies: {
 	name: BodyName;
@@ -309,7 +330,10 @@ let binding: HomeBinding | null = null;
 let bindingAbort: AbortController | null = null;
 
 const pointer = { x: 0, y: 0 };
-const drag = { active: false, x: 0, y: 0, moved: 0 };
+const drag = { active: false, x: 0, y: 0, moved: 0, vx: 0, vy: 0, at: 0 }; // vx, vy: pointer speed (px/s); at: last move
+// Sky view momentum: a flick keeps the view gliding (px/s on screen), slowing by PAN_FRICTION per second.
+let panGlide: { vx: number; vy: number } | null = null;
+const PAN_FRICTION = 4;
 // Fingers (or the mouse) currently pressed on the stage, for two-finger pinch zoom in the sky view.
 const pointers = new Map<number, { x: number; y: number }>();
 let pinch: { distance: number; fov: number } | null = null; // finger spread and zoom when the pinch began
@@ -434,6 +458,7 @@ export function initCosmos(canvas: HTMLCanvasElement) {
 			// mostly there (not while fading in on arrival or back in after following).
 			groundMaterial.depthWrite = skyFade.ground > 0.5 && groundHidden < 0.5;
 		}
+		glidePan(dt);
 		if (view === 'surface' && !busy && celestial) driveTelescope();
 		// Tracking keeps easing onto the object even mid-drag (the drag pans around it).
 		if (view === 'surface' && !busy && (!drag.active || trackedItem)) {
@@ -815,6 +840,9 @@ function onPointerDown(e: PointerEvent) {
 		return;
 	}
 	drag.active = true;
+	panGlide = null; // a press stops any glide
+	drag.vx = drag.vy = 0;
+	drag.at = performance.now();
 	drag.x = e.clientX;
 	drag.y = e.clientY;
 	drag.moved = 0;
@@ -878,6 +906,12 @@ function onPointerMove(e: PointerEvent) {
 	drag.x = e.clientX;
 	drag.y = e.clientY;
 	drag.moved += Math.abs(dx) + Math.abs(dy);
+	// The pointer's speed, smoothed, for a flick's glide when it's let go.
+	const now = performance.now();
+	const seconds = Math.max(0.004, (now - drag.at) / 1000);
+	drag.vx = drag.vx * 0.5 + (dx / seconds) * 0.5;
+	drag.vy = drag.vy * 0.5 + (dy / seconds) * 0.5;
+	drag.at = now;
 	// Capture only once it is clearly a drag, so plain clicks still reach the cards.
 	if (drag.moved > DRAG_THRESHOLD && !stage.hasPointerCapture(e.pointerId)) stage.setPointerCapture(e.pointerId);
 
@@ -885,22 +919,40 @@ function onPointerMove(e: PointerEvent) {
 		spin.x = dx * 0.006;
 		spin.y = dy * 0.006;
 		rotatePlanet(spin.x, spin.y);
-	} else if (view === 'surface') {
-		// Slower when zoomed in, so the sky still follows the pointer.
-		const speed = 0.004 * (skyZoom.fov / SURFACE_FOV_MAX);
-		if (trackedItem) {
-			// Tracking: pan around the object, and keep that view of it as it moves.
-			trackOffset.yaw -= dx * speed;
-			trackOffset.pitch = clamp(trackOffset.pitch + dy * speed, -Math.PI / 2, Math.PI / 2);
-			aimAt(trackedItem);
-			look.yaw = lookTarget.yaw;
-			look.pitch = lookTarget.pitch;
-			return;
-		}
-		look.yaw = lookTarget.yaw = look.yaw - dx * speed;
-		// Below the usual limit (after following something down there), never tilt further down.
-		look.pitch = lookTarget.pitch = clamp(look.pitch + dy * speed, Math.min(SKY_PITCH_MIN, look.pitch), SKY_PITCH_MAX);
+	} else if (view === 'surface') panSky(dx, dy);
+}
+
+/**
+ * Sky view: move the view by a drag of (dx, dy) pixels, one to one: what's under the
+ * pointer stays under it, at any zoom. Tracking something, this pans around it (the
+ * offset is kept as it moves).
+ */
+function panSky(dx: number, dy: number) {
+	// Radians per pixel at the current zoom; turning sideways covers less sky the
+	// higher the view is tilted, so it turns faster there to keep up.
+	const speed = THREE.MathUtils.degToRad(camera.fov) / window.innerHeight;
+	const sideways = speed / Math.max(0.25, Math.cos(look.pitch));
+	if (trackedItem) {
+		trackOffset.yaw -= dx * sideways;
+		trackOffset.pitch = clamp(trackOffset.pitch + dy * speed, -Math.PI / 2, Math.PI / 2);
+		aimAt(trackedItem);
+		look.yaw = lookTarget.yaw;
+		look.pitch = lookTarget.pitch;
+		return;
 	}
+	look.yaw = lookTarget.yaw = look.yaw - dx * sideways;
+	// Below the usual limit (after following something down there), never tilt further down.
+	look.pitch = lookTarget.pitch = clamp(look.pitch + dy * speed, Math.min(SKY_PITCH_MIN, look.pitch), SKY_PITCH_MAX);
+}
+
+/** Each frame: carry on a flick's glide, slowing to a stop. */
+function glidePan(dt: number) {
+	if (!panGlide || drag.active || busy || view !== 'surface') return;
+	panSky(panGlide.vx * dt, panGlide.vy * dt);
+	const slow = Math.exp(-PAN_FRICTION * dt);
+	panGlide.vx *= slow;
+	panGlide.vy *= slow;
+	if (Math.hypot(panGlide.vx, panGlide.vy) < 15) panGlide = null;
 }
 
 /** Remember where the pointer is, for the star name tip (a tap counts too). */
@@ -921,8 +973,23 @@ function pinchDistance(): number {
  * locked onto a disk, down to where that disk is about twice the view's height.
  */
 function zoomFloor(): number {
+	// Locked onto a star: deep enough for its simulation to be STAR_SIM_MAX_SCREENS tall.
+	if (trackedItem?.starType !== undefined) {
+		const deepest = (STAR_SIM_LINEAR * (STAR_SIM_MAX_SCREENS * window.innerHeight)) / (2 * starSimRadiusPx(STAR_SIM_LINEAR));
+		return Math.max(SKY_ZOOM_DEEP, NAKED_EYE_FOV / deepest);
+	}
 	const radius = trackedItem?.angularRadius;
 	return radius ? Math.max(SKY_ZOOM_DEEP, Math.min(SKY_ZOOM_MIN, THREE.MathUtils.radToDeg(radius))) : SKY_ZOOM_MIN;
+}
+
+/**
+ * How big (radius, pixels) the star simulation is drawn at a magnification: growing
+ * gently at first, like the stars' close-up images, then from STAR_SIM_LINEAR on in
+ * step with the zoom, like a real disk, so the telescope can dive into its surface.
+ */
+function starSimRadiusPx(magnification: number): number {
+	const gentle = 18 * Math.sqrt(Math.min(magnification, STAR_SIM_LINEAR) / STAR_DETAIL_ZOOM[1]);
+	return Math.max(10, magnification > STAR_SIM_LINEAR ? gentle * (magnification / STAR_SIM_LINEAR) : gentle);
 }
 
 /** Sky view: the scroll wheel zooms in and out, toward whatever is under the cursor. */
@@ -938,6 +1005,7 @@ function onWheel(e: WheelEvent) {
  */
 function zoomToward(after: number, screenX: number, screenY: number) {
 	autoZoomOut = false;
+	panGlide = null;
 	stopWideningView();
 	const before = skyZoom.target;
 	skyZoom.target = after;
@@ -959,6 +1027,7 @@ function zoomToward(after: number, screenX: number, screenY: number) {
  * following it as the sky turns (until the visitor drags to look elsewhere).
  */
 function focusOn(item: SkyItem) {
+	panGlide = null;
 	trackedItem = item;
 	trackLock = 0;
 	trackOffset.yaw = trackOffset.pitch = 0;
@@ -1064,6 +1133,7 @@ export function lookToward(alt: number, az: number, fov?: number) {
 	if (view !== 'surface' || busy) return;
 	trackedItem = null;
 	autoZoomOut = false;
+	panGlide = null;
 	if (fov !== undefined) stopWideningView();
 	lookTarget.yaw = az + 2 * Math.PI * Math.round((look.yaw - az) / (2 * Math.PI)); // the short way round
 	lookTarget.pitch = clamp(alt, SKY_PITCH_MIN, SKY_PITCH_MAX);
@@ -1120,13 +1190,13 @@ function driveTelescope() {
 /**
  * How far the star field moved on screen this frame because of the clock (the sky
  * turning, or the view following something across it), and the background's fade to
- * match. While the visitor is looking around or zooming, the fade holds where it is.
+ * match. While the visitor is looking around (dragging or gliding) or zooming, the fade holds where it is.
  */
 function measureSkyMotion(dt: number) {
 	const turn = celestialRotation();
 	const forward = camera.getWorldDirection(new THREE.Vector3());
 	const zooming = Math.abs(skyZoom.target - skyZoom.fov) > skyZoom.fov * 0.02;
-	if (motionCenter && !drag.active && !pinch && !zooming && !busy) {
+	if (motionCenter && !drag.active && !panGlide && !pinch && !zooming && !busy) {
 		const pxPerRadian = window.innerHeight / 2 / Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
 		const moved = motionCenter.clone().applyQuaternion(turn).angleTo(forward) * pxPerRadian;
 		const target = 1 - smoothstep(STROBE_PX[0], STROBE_PX[1], moved);
@@ -1170,6 +1240,9 @@ function onPointerUp(e: PointerEvent) {
 		// Swallow only the click this same release produces, not later keyboard clicks.
 		suppressClick = true;
 		setTimeout(() => (suppressClick = false));
+		// A flick (still moving when let go) glides on; a drag that stopped first doesn't.
+		const flicked = performance.now() - drag.at < 80 && Math.hypot(drag.vx, drag.vy) > 120;
+		if (view === 'surface' && flicked) panGlide = { vx: drag.vx, vy: drag.vy };
 	} else if (view === 'planet' && !busy && hitsEgg(e)) binding?.onEgg();
 	else if (view === 'surface' && !busy && pressedBody) focusOn(pressedBody);
 }
@@ -1227,6 +1300,7 @@ const MOON_SEPARATION_PX = 14;
 const DISK_FADE_PX = [6, 16];
 const DEEP_SKY_DISTANCE = SKY_RADIUS * 1.01; // just behind the stars
 const COMET_DISTANCE = SKY_RADIUS * 0.98; // in front of the stars, behind the Moon and planets
+const STAR_SIM_DISTANCE = SKY_RADIUS * 0.99; // just in front of the star it stands in for
 const METEOR_DISTANCE = SKY_RADIUS * 0.96; // in front of everything: meteors burn up in our own air
 // Deep-sky objects smaller than this on screen (pixels) are drawn this big, and dimmer, so they can be found.
 const DEEP_SKY_MIN_PX = 14;
@@ -1278,20 +1352,17 @@ function buildSky(): { yaw: number; pitch: number } {
 			detail: starDetail(s),
 		}));
 		const stars = starMaterial();
-		celestial.add(
-			new THREE.Points(
-				starGeometry(
-					constellation.stars.map((s) => ({
-						local: local.get(s.name)!,
-						size: starSize(s.mag),
-						color: starColor(s.bv),
-						twinkle: true,
-						type: starType(s.bv),
-					})),
-				),
-				stars,
-			),
+		const geometry = starGeometry(
+			constellation.stars.map((s) => ({
+				local: local.get(s.name)!,
+				size: starSize(s.mag),
+				color: starColor(s.bv),
+				twinkle: true,
+				type: starType(s.bv),
+			})),
 		);
+		celestial.add(new THREE.Points(geometry, stars));
+		markStars(items, constellation.stars, geometry);
 		const lines = new THREE.LineBasicMaterial({ color: 0x8fb8ff, transparent: true, opacity: 0 });
 		const linePoints = constellation.lines.flatMap(([a, b]) => [local.get(a)!, local.get(b)!]);
 		celestial.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(linePoints), lines));
@@ -1310,21 +1381,18 @@ function buildSky(): { yaw: number; pitch: number } {
 			detail: starDetail(s),
 		}));
 		const material = starMaterial();
-		celestial.add(
-			new THREE.Points(
-				starGeometry(
-					looseStars.map((s, i) => ({
-						local: items[i].local,
-						size: starSize(s.mag),
-						// Stars past the naked-eye limit are drawn dim.
-						color: starColor(s.bv).multiplyScalar(s.mag > NAKED_EYE_LIMIT ? 0.45 : 1),
-						twinkle: true,
-						type: starType(s.bv),
-					})),
-				),
-				material,
-			),
+		const geometry = starGeometry(
+			looseStars.map((s, i) => ({
+				local: items[i].local,
+				size: starSize(s.mag),
+				// Stars past the naked-eye limit are drawn dim.
+				color: starColor(s.bv).multiplyScalar(s.mag > NAKED_EYE_LIMIT ? 0.45 : 1),
+				twinkle: true,
+				type: starType(s.bv),
+			})),
 		);
+		celestial.add(new THREE.Points(geometry, material));
+		markStars(items, looseStars, geometry);
 		skyLoose = { items, stars: material };
 		skyItems.push(...items);
 	}
@@ -1375,6 +1443,22 @@ function buildSky(): { yaw: number; pitch: number } {
 		});
 		skyItems.push(item);
 	});
+
+	// The star simulation, shown on whichever star is being zoomed into.
+	{
+		const surface = starSurfaceMaterial();
+		const corona = starCoronaMaterial();
+		const sphere = new THREE.Mesh(new THREE.SphereGeometry(1, 192, 96), surface);
+		sphere.renderOrder = 1;
+		const halo = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), corona);
+		halo.renderOrder = 2;
+		halo.frustumCulled = false; // a billboard: sized in its shader
+		const group = new THREE.Group();
+		group.add(sphere, halo);
+		group.visible = false;
+		celestial.add(group);
+		starSim = { group, sphere, surface, corona, item: null, mix: 0 };
+	}
 
 	// Comets; updateSky moves them along their orbits.
 	for (const comet of comets) {
@@ -1467,6 +1551,7 @@ function removeSky() {
 	skyDeep = [];
 	skyComets = [];
 	skyMeteors = null;
+	starSim = null;
 	groundHidden = 0;
 	driveCenter = motionCenter = null;
 	motionFade = 1;
@@ -1532,7 +1617,8 @@ function updateSky(dt: number, t: number) {
 			altitudes.every((sinAlt) => sinAlt > 0) || (trackedItem !== null && c.items.includes(trackedItem)) || groundHidden >= 1 ? 1 : 0;
 		c.opacity += (target - c.opacity) * Math.min(1, dt * 3);
 		c.stars.uniforms.uOpacity.value = c.opacity * skyFade.stars * motionFade;
-		c.lines.opacity = c.opacity * skyFade.lines * motionFade;
+		// Lines step aside while a star simulation is showing: at that zoom they only cross its glow.
+		c.lines.opacity = c.opacity * skyFade.lines * motionFade * (1 - (starSim?.mix ?? 0));
 		c.items.forEach((item, i) => (item.hoverable = c.opacity > 0.5 && altitudes[i] > 0));
 	}
 	updateDeepSky();
@@ -1548,6 +1634,7 @@ function updateSky(dt: number, t: number) {
 		});
 	}
 	updateBodies(now);
+	updateStarSim(dt);
 
 	// The faint background stars turn with the sky too, centered on the visitor.
 	stars.position.copy(surfaceFrame!.eye);
@@ -2176,6 +2263,98 @@ const STAR_TYPES: { maxBv: number; label: string; core: string; halo: [number, n
 	{ maxBv: 1.55, label: 'K-type star · orange', core: '#fff0dc', halo: [255, 185, 115], spikes: 0.6 },
 	{ maxBv: Infinity, label: 'M-type star · cool, red-orange', core: '#ffe6d2', halo: [255, 130, 85], spikes: 0.5 },
 ];
+
+/** Give each star's item its spectral type and its point of light in the geometry. */
+function markStars(items: SkyItem[], stars: SkyStar[], geometry: THREE.BufferGeometry) {
+	const sizes = geometry.getAttribute('aSize') as THREE.BufferAttribute;
+	items.forEach((item, i) => {
+		item.starType = starType(stars[i].bv);
+		item.point = { sizes, index: i, size: sizes.getX(i) };
+	});
+}
+
+/** The star the simulation should be on: the one locked onto, or else the one nearest the middle when zoomed in. */
+function starSimTarget(magnification: number): SkyItem | null {
+	if (trackedItem?.starType !== undefined) return trackedItem;
+	if (trackedItem || magnification < STAR_SIM_ZOOM[0]) return null;
+	const w = window.innerWidth;
+	const h = window.innerHeight;
+	camera.getWorldDirection(forward);
+	let best: SkyItem | null = null;
+	let bestDistance = STAR_SIM_PICK_PX;
+	for (const item of [...skyConstellations.flatMap((c) => c.items), ...(skyLoose?.items ?? [])]) {
+		if (!item.hoverable) continue;
+		const world = worldOf(item);
+		if (tmp.copy(world).sub(camera.position).dot(forward) <= 0) continue;
+		const [x, y] = toScreen(world, w, h);
+		const distance = Math.hypot(x - w / 2, y - h / 2);
+		if (distance < bestDistance) {
+			best = item;
+			bestDistance = distance;
+		}
+	}
+	return best;
+}
+
+/** Hide (amount 1) or restore (0) a star's point of light. */
+function dimStarPoint(item: SkyItem | null, amount: number) {
+	if (!item?.point) return;
+	const { sizes, index, size } = item.point;
+	sizes.setX(index, size * (1 - amount));
+	sizes.needsUpdate = true;
+}
+
+/**
+ * Each frame: the star simulation on the star being zoomed into. It fades in over its
+ * point of light as the magnification rises past STAR_SIM_ZOOM, sized like the star's
+ * close-up image would be; switching stars fades the old one out first.
+ */
+function updateStarSim(dt: number) {
+	const sim = starSim;
+	if (!sim) return;
+	const magnification = NAKED_EYE_FOV / camera.fov;
+	const want = starSimTarget(magnification);
+	if (want !== sim.item) {
+		if (sim.item && sim.mix > 0.02) sim.mix = Math.max(0, sim.mix - dt * 5);
+		else {
+			dimStarPoint(sim.item, 0);
+			sim.item = want;
+			sim.mix = 0;
+			if (want) applyStarLook(sim.surface, sim.corona, STAR_LOOKS[want.starType!]);
+		}
+	} else if (want) {
+		const target = smoothstep(STAR_SIM_ZOOM[0], STAR_SIM_ZOOM[1], magnification);
+		sim.mix += (target - sim.mix) * Math.min(1, dt * 4);
+	}
+	const item = sim.item;
+	sim.group.visible = !!item && sim.mix > 0.002;
+	if (!item) return;
+	dimStarPoint(item, sim.mix);
+	if (!sim.group.visible) return;
+
+	// Sized on screen like the star's close-up image, growing with the zoom.
+	const pxPerRadian = window.innerHeight / 2 / Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
+	const radiusPx = starSimRadiusPx(magnification);
+	const dir = item.local.clone().normalize();
+	const radius = (radiusPx / pxPerRadian) * STAR_SIM_DISTANCE;
+	sim.group.position.copy(dir).multiplyScalar(STAR_SIM_DISTANCE);
+	// Facing us, with its pole toward the celestial north.
+	const z = dir.clone().negate();
+	const y = new THREE.Vector3(0, 0, 1).addScaledVector(z, -z.z);
+	if (y.lengthSq() < 1e-8) y.set(1, 0, 0);
+	y.normalize();
+	const x = new THREE.Vector3().crossVectors(y, z);
+	sim.group.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z));
+	sim.sphere.scale.setScalar(radius);
+	const seconds = performance.now() / 1000;
+	sim.sphere.rotation.y = seconds * 0.03;
+	const opacity = sim.mix * skyFade.stars;
+	sim.surface.uniforms.uTime.value = seconds;
+	sim.surface.uniforms.uOpacity.value = opacity;
+	sim.corona.uniforms.uTime.value = seconds;
+	sim.corona.uniforms.uOpacity.value = opacity;
+	sim.corona.uniforms.uRadius.value = radius;
+}
 
 /** Light travel time for a distance in AU: "8 light-minutes", "4.6 light-hours". */
 function lightTime(au: number): string {
