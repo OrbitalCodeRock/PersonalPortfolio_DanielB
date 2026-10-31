@@ -237,8 +237,8 @@ function bodyMaterial(name: BodyName): THREE.ShaderMaterial {
 				float shade = day * (0.45 + 0.55 * max(light, 0.0));
 				float limb = mix(1.0, pow(max(dot(n, toViewer), 0.0), 0.35), LIMB_DARKENING);
 				vec3 base = surface(vLocal);
-				// The real map, drawn moving for planets with weather (jets, eddies, extras).
-				if (uMapMix > 0.0) base = mix(base, weatherColor(texture2D(uMap, weatherUv(vUv)).rgb, vUv), uMapMix);
+				// The real map: moving, and graded toward photographs, for planets with weather (skyWeather.ts).
+				if (uMapMix > 0.0) base = mix(base, planetMap(uMap, vUv), uMapMix);
 				if (EMISSIVE > 0) shade = 1.0;
 				gl_FragColor = vec4(base * (shade * limb + EARTHSHINE), uOpacity);
 				#include <colorspace_fragment>
