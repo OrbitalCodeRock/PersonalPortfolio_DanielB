@@ -172,8 +172,31 @@ const DRAW: Record<DeepSkyKind, (ctx: CanvasRenderingContext2D, random: () => nu
 	},
 };
 
-/** The image for one deep-sky object (seed varies it between objects of the same kind). */
+const painted = new Map<string, THREE.Texture>();
+
+/**
+ * The image for one deep-sky object (seed varies it between objects of the same
+ * kind). Painted once and kept (userData.shared: the sky view keeps it when it's
+ * taken down); painting them all is slow enough to notice, so the sky view can
+ * paint them ahead of time.
+ */
 export function deepSkyTexture(kind: DeepSkyKind, seed: number): THREE.Texture {
+	const key = `${kind}:${seed}`;
+	let texture = painted.get(key);
+	if (!texture) {
+		texture = paintDeepSky(kind, seed);
+		texture.userData.shared = true;
+		painted.set(key, texture);
+	}
+	return texture;
+}
+
+/** Has this image been painted yet? */
+export function deepSkyPainted(kind: DeepSkyKind, seed: number): boolean {
+	return painted.has(`${kind}:${seed}`);
+}
+
+function paintDeepSky(kind: DeepSkyKind, seed: number): THREE.Texture {
 	const canvas = document.createElement('canvas');
 	canvas.width = canvas.height = SIZE;
 	const ctx = canvas.getContext('2d')!;

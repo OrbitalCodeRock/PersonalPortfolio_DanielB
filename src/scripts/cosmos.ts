@@ -20,11 +20,11 @@ import {
 	holdClock,
 	useLocationIfAllowed,
 } from './sky';
-import { createBodyVisual, type BodyVisual } from './skyBodies';
+import { bodySphere, createBodyVisual, prewarmBodies, type BodyVisual } from './skyBodies';
 import { isGalileanMoon, solarSystem, type BodyName } from './ephemeris';
 import { constellations, looseStars, type SkyStar } from '../data/constellations';
 import { deepSky } from '../data/deepSky';
-import { deepSkyTexture } from './deepSkyArt';
+import { deepSkyPainted, deepSkyTexture } from './deepSkyArt';
 import { deepSkyImages, planetMaps, type ImageCredit } from '../data/skyImages';
 import { fitPhoto, loadSkyImage, photoMaterial } from './skyImageLoader';
 import { comets } from '../data/comets';
@@ -123,9 +123,9 @@ const STAR_SIM_MAX_SCREENS = 20;
 // constellation lines, galaxies, comets) starts to fade, and is gone: past that it
 // only strobes. Measured from the clock's motion, not from looking around.
 const STROBE_PX = [30, 140];
-// Lowest the sky view tilts while looking around (radians below the horizon). Following
-// something that has set, it can tilt all the way down (-SKY_PITCH_MAX).
-const SKY_PITCH_MIN = -0.35;
+// Lowest the sky view tilts (radians): all the way down. Below the horizon the ground
+// vanishes (see groundHidden), showing the sky underfoot.
+const SKY_PITCH_MIN = -SKY_PITCH_MAX;
 // Point-of-light color for each body when it is too small to see as a disk.
 const PLANET_GLOW: Record<Exclude<BodyName, 'Moon'>, number> = {
 	Sun: 0xfff4d6,
@@ -223,7 +223,6 @@ interface SkyItem {
 	hoverable: boolean; // up, and part of what's on show
 	detail?: string; // a second line under the name: a star's type, or an image credit while a real image shows
 	focusFov?: number; // field of view (degrees) to frame it when locking on, for things without a disk
-	up?: boolean; // above the horizon, for things that can be up yet too faint to hover (the telescope can still lock on)
 	starType?: number; // stars: STAR_TYPES index
 	point?: { sizes: THREE.BufferAttribute; index: number; size: number }; // stars: their point of light, to hide behind the simulation
 }
@@ -292,8 +291,9 @@ let pressedBody: SkyItem | null = null; // the body under the pointer when it wa
 // Panning while tracking: how far the view sits from the tracked object (radians), kept as it moves.
 const trackOffset = { yaw: 0, pitch: 0 };
 let autoZoomOut = false; // zooming back out at AUTO_ZOOM_OUT_RATE; any manual zoom stops it
-// 1 while following something whose path would bring the horizon into view (see
-// groundWouldShow): the ground isn't drawn at all, hidden at once rather than faded.
+// 1 while the view looks below the horizon, or follows something whose path would bring
+// the horizon into view (see groundWouldShow): the ground isn't drawn at all, hidden at
+// once rather than faded, and what's below the horizon can be hovered and locked onto.
 // Back toward 0 (the ground fading back in, out of view) once that stops.
 let groundHidden = 0;
 // The view's center on the celestial sphere at the end of the last frame (celestial frame),
@@ -366,6 +366,7 @@ export function initCosmos(canvas: HTMLCanvasElement) {
 	camera.position.z = 5;
 	glowTexture = makeGlowTexture();
 	starAtlas = makeStarAtlas();
+	prewarmSky();
 
 	// Stars, in a thick shell so none end up right next to the camera when it flies in.
 	// Seeded, so every page load gets the same sky.
@@ -941,8 +942,7 @@ function panSky(dx: number, dy: number) {
 		return;
 	}
 	look.yaw = lookTarget.yaw = look.yaw - dx * sideways;
-	// Below the usual limit (after following something down there), never tilt further down.
-	look.pitch = lookTarget.pitch = clamp(look.pitch + dy * speed, Math.min(SKY_PITCH_MIN, look.pitch), SKY_PITCH_MAX);
+	look.pitch = lookTarget.pitch = clamp(look.pitch + dy * speed, SKY_PITCH_MIN, SKY_PITCH_MAX);
 }
 
 /** Each frame: carry on a flick's glide, slowing to a stop. */
@@ -1019,7 +1019,7 @@ function zoomToward(after: number, screenX: number, screenY: number) {
 	// ...of which this much needs to become the new center: all of it zoomed in infinitely, none for no change.
 	const share = 1 - after / before;
 	lookTarget.yaw += offYaw * share;
-	lookTarget.pitch = clamp(lookTarget.pitch + offPitch * share, Math.min(SKY_PITCH_MIN, lookTarget.pitch), SKY_PITCH_MAX);
+	lookTarget.pitch = clamp(lookTarget.pitch + offPitch * share, SKY_PITCH_MIN, SKY_PITCH_MAX);
 }
 
 /**
@@ -1099,13 +1099,10 @@ function showFollowNote(item: SkyItem | null, below = false) {
 	}
 }
 
-/** Sky view: stop following whatever the telescope is locked onto, and tilt back up to the sky if looking at the ground. */
+/** Sky view: stop following whatever the telescope is locked onto (the view stays where it is). */
 export function stopFollowing() {
 	trackedItem = null;
-	if (lookTarget.pitch < SKY_LOOK_UP) lookTarget.pitch = SKY_LOOK_UP;
 }
-// Where "Stop following" tilts the view to when it's below the horizon: a little above it (radians).
-const SKY_LOOK_UP = 0.15;
 
 /** Sky view: ease the telescope back out to the naked eye (still following whatever it was on). */
 export function zoomOutSky() {
@@ -1114,12 +1111,14 @@ export function zoomOutSky() {
 }
 
 /**
- * Sky view: lock the telescope onto a sky item by its search key (see skyFinder.ts).
- * False if it isn't on show right now (below the horizon, or its constellation isn't fully up).
+ * Sky view: lock the telescope onto a sky item by its search key (see skyFinder.ts),
+ * above or below the horizon (below, the ground vanishes to show it). Whether it's
+ * on show otherwise (a shower that's active, a comet bright enough) is the caller's
+ * to check. False outside the sky view.
  */
 export function lockOnto(key: string): boolean {
 	const item = skyItems.find((i) => i.key === key);
-	if (view !== 'surface' || busy || !item || !(item.up ?? item.hoverable)) return false;
+	if (view !== 'surface' || busy || !item) return false;
 	focusOn(item);
 	return true;
 }
@@ -1160,9 +1159,8 @@ function celestialRotation(): THREE.Quaternion {
 /**
  * The telescope drive: zoomed in, and not locked onto anything, turn the view with
  * the stars (as the sky turned this frame), so they hold still however fast the
- * clock runs. Partly between the DRIVE_FOV fields of view; not at all wider. It lets
- * go rather than follow the stars into the ground: once its point would take the
- * bottom of the view below the horizon, the view holds there and the stars set past it.
+ * clock runs. Partly between the DRIVE_FOV fields of view; not at all wider. Stars
+ * setting take the view below the horizon with them, and the ground vanishes.
  */
 function driveTelescope() {
 	const { n, t, r } = surfaceFrame!;
@@ -1173,16 +1171,13 @@ function driveTelescope() {
 		const dir = driveCenter.clone().applyQuaternion(turn);
 		const yaw = Math.atan2(dir.dot(r), dir.dot(t));
 		const pitch = Math.asin(clamp(dir.dot(n), -1, 1));
-		const halfHeight = THREE.MathUtils.degToRad(skyZoom.fov) / 2;
-		const settingIntoGround = pitch < halfHeight && pitch < lookTarget.pitch;
-		const dYaw = settingIntoGround ? 0 : weight * (yaw - lookTarget.yaw - 2 * Math.PI * Math.round((yaw - lookTarget.yaw) / (2 * Math.PI)));
-		const dPitch = settingIntoGround ? 0 : weight * (pitch - lookTarget.pitch);
+		const dYaw = weight * (yaw - lookTarget.yaw - 2 * Math.PI * Math.round((yaw - lookTarget.yaw) / (2 * Math.PI)));
+		const dPitch = weight * (pitch - lookTarget.pitch);
 		// Move the view and its target together, so the turn isn't eased (and lagged).
 		lookTarget.yaw += dYaw;
 		look.yaw += dYaw;
-		const low = Math.min(SKY_PITCH_MIN, lookTarget.pitch);
-		lookTarget.pitch = clamp(lookTarget.pitch + dPitch, low, SKY_PITCH_MAX);
-		look.pitch = clamp(look.pitch + dPitch, Math.min(SKY_PITCH_MIN, look.pitch), SKY_PITCH_MAX);
+		lookTarget.pitch = clamp(lookTarget.pitch + dPitch, SKY_PITCH_MIN, SKY_PITCH_MAX);
+		look.pitch = clamp(look.pitch + dPitch, SKY_PITCH_MIN, SKY_PITCH_MAX);
 	}
 	driveCenter = lookDirection(lookTarget.yaw, lookTarget.pitch).applyQuaternion(turn.invert());
 }
@@ -1323,7 +1318,7 @@ function celestialDir(ra: number, dec: number): THREE.Vector3 {
  * constellation; the landing frame's t is north, r is east and n is the zenith.
  */
 function buildSky(): { yaw: number; pitch: number } {
-	removeSky();
+	removeSky(true);
 	const { eye, n, t, r } = surfaceFrame!;
 	const now = skyNow();
 	const choice = chooseSky(getObserver(), now);
@@ -1448,7 +1443,7 @@ function buildSky(): { yaw: number; pitch: number } {
 	{
 		const surface = starSurfaceMaterial();
 		const corona = starCoronaMaterial();
-		const sphere = new THREE.Mesh(new THREE.SphereGeometry(1, 192, 96), surface);
+		const sphere = new THREE.Mesh(bodySphere(192, 96), surface);
 		sphere.renderOrder = 1;
 		const halo = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), corona);
 		halo.renderOrder = 2;
@@ -1512,6 +1507,7 @@ function buildSky(): { yaw: number; pitch: number } {
 
 	sky.add(buildGround());
 	scene.add(sky);
+	precompileSky(sky);
 
 	const dirOf = (alt: number, az: number) =>
 		new THREE.Vector3()
@@ -1528,17 +1524,112 @@ function buildSky(): { yaw: number; pitch: number } {
 	return { yaw: Math.atan2(center.dot(r), center.dot(t)), pitch: clamp(Math.asin(center.dot(n)), SKY_PITCH_MIN, SKY_PITCH_MAX) };
 }
 
-function removeSky() {
+// Time per frame (ms) spent compiling the sky's shaders ahead of time (precompileSky).
+const PRECOMPILE_MS_PER_FRAME = 4;
+// Longest a first sky stays hidden waiting for its shaders (ms): about when its stars start to fade in.
+const PRECOMPILE_MAX_WAIT_MS = 2500;
+// A replaced sky, kept until its replacement has compiled (see removeSky).
+let retiredSky: THREE.Group | null = null;
+
+/** Free a sky's geometry, materials and images, except those kept for every sky (userData.shared). */
+function disposeSky(root: THREE.Group | null) {
+	root?.traverse((obj) => {
+		const mesh = obj as THREE.Mesh;
+		if (!mesh.geometry?.userData.shared) mesh.geometry?.dispose();
+		if (mesh.material && !Array.isArray(mesh.material)) {
+			const map = (mesh.material as THREE.MeshBasicMaterial).map; // the deep-sky images
+			if (!map?.userData.shared) map?.dispose();
+			mesh.material.dispose();
+		}
+	});
+}
+
+// Idle time (ms) to leave free, once prewarmSky has done a piece of its work.
+const PREWARM_IDLE_MARGIN_MS = 2;
+
+/**
+ * While the page sits idle, build the sky view's slowest parts ahead of time, a
+ * piece at a time: the bodies' spheres and the deep-sky images. Entering the sky
+ * view then only has to put them in place.
+ */
+function prewarmSky() {
+	const idle = (work: (deadline?: IdleDeadline) => void) =>
+		'requestIdleCallback' in window ? requestIdleCallback(work, { timeout: 2000 }) : setTimeout(work, 50);
+	let next = 0; // the next deep-sky image to paint
+	const step = (deadline?: IdleDeadline) => {
+		do {
+			if (!prewarmBodies()) continue;
+			while (next < deepSky.length && deepSkyPainted(deepSky[next].kind, next)) next++;
+			if (next >= deepSky.length) return;
+			deepSkyTexture(deepSky[next].kind, next);
+		} while (deadline && !deadline.didTimeout && deadline.timeRemaining() > PREWARM_IDLE_MARGIN_MS);
+		idle(step);
+	};
+	idle(step);
+}
+
+/**
+ * Compile a newly built sky's shaders a few at a time, one frame after another,
+ * rather than all at once on the sky's first frame, or, for things hidden until
+ * zoomed in (the planets' disks, the star simulation), in the middle of a zoom
+ * (compile() covers hidden things too). A first sky (arriving) stays hidden until
+ * they're all ready, during the flight down; one replacing another (a new place) shows at
+ * once, reusing the old one's shaders, which are let go of once it's done.
+ */
+function precompileSky(root: THREE.Group) {
+	const queue: THREE.Object3D[] = [];
+	const materials = new Set<THREE.Material>();
+	root.traverse((obj) => {
+		const material = (obj as THREE.Mesh).material;
+		if (!material) return;
+		const list = Array.isArray(material) ? material : [material];
+		if (list.every((m) => materials.has(m))) return;
+		list.forEach((m) => materials.add(m));
+		queue.push(obj);
+	});
+	const replacing = retiredSky !== null;
+	// Shown (and the old sky let go of) once every shader is ready, or after
+	// PRECOMPILE_MAX_WAIT_MS at the latest, whichever comes first.
+	const done = () => {
+		if (sky !== root || root.visible && !retiredSky) return;
+		root.visible = true;
+		disposeSky(retiredSky);
+		retiredSky = null;
+	};
+	if (!replacing) {
+		root.visible = false;
+		setTimeout(done, PRECOMPILE_MAX_WAIT_MS);
+	}
+	const step = () => {
+		if (sky !== root) return; // replaced or removed meanwhile
+		const start = performance.now();
+		while (queue.length && performance.now() - start < PRECOMPILE_MS_PER_FRAME) {
+			const obj = queue.shift()!;
+			renderer.compile(obj, camera, scene);
+			// Its image onto the GPU too (the deep-sky images), rather than on first sight.
+			const map = ((obj as THREE.Mesh).material as THREE.MeshBasicMaterial).map;
+			if (map) renderer.initTexture(map);
+		}
+		if (queue.length) return requestAnimationFrame(step);
+		// compile() only starts the shaders building; drawing one before it's done waits
+		// for it. compileAsync waits (without blocking) until they all are.
+		renderer.compileAsync(root, camera, scene).then(done);
+	};
+	requestAnimationFrame(step);
+}
+
+/**
+ * Take down the sky view's sky. Replacing it with another (keepShaders), its
+ * materials are kept until the new sky has compiled, so their shaders carry over
+ * instead of being freed and compiled again.
+ */
+function removeSky(keepShaders = false) {
 	if (sky) {
 		scene.remove(sky);
-		sky.traverse((obj) => {
-			const mesh = obj as THREE.Mesh;
-			mesh.geometry?.dispose();
-			if (mesh.material && !Array.isArray(mesh.material)) {
-				(mesh.material as THREE.MeshBasicMaterial).map?.dispose(); // the deep-sky images
-				mesh.material.dispose();
-			}
-		});
+		disposeSky(retiredSky);
+		retiredSky = null;
+		if (keepShaders) retiredSky = sky;
+		else disposeSky(sky);
 	}
 	sky = null;
 	celestial = null;
@@ -1587,6 +1678,14 @@ function constellationAltitudes(items: SkyItem[]): number[] {
 	return items.map((item) => tmp.copy(item.local).normalize().applyQuaternion(celestial!.quaternion).dot(surfaceFrame!.n));
 }
 
+/**
+ * Is a point at this altitude (its sine) on show to hover? Above the horizon, or
+ * anywhere while the ground is hidden.
+ */
+function aboveGround(sinAlt: number): boolean {
+	return sinAlt > 0 || groundHidden >= 1;
+}
+
 /** World position of a sky item. */
 function worldOf(item: SkyItem, out = new THREE.Vector3()): THREE.Vector3 {
 	return out.copy(item.local).applyMatrix4(celestial!.matrixWorld);
@@ -1607,7 +1706,7 @@ function updateSky(dt: number, t: number) {
 	if (skyLoose) {
 		skyLoose.stars.uniforms.uOpacity.value = skyFade.stars * motionFade;
 		const altitudes = constellationAltitudes(skyLoose.items);
-		skyLoose.items.forEach((item, i) => (item.hoverable = altitudes[i] > 0));
+		skyLoose.items.forEach((item, i) => (item.hoverable = aboveGround(altitudes[i])));
 	}
 	for (const c of skyConstellations) {
 		const altitudes = constellationAltitudes(c.items);
@@ -1619,7 +1718,7 @@ function updateSky(dt: number, t: number) {
 		c.stars.uniforms.uOpacity.value = c.opacity * skyFade.stars * motionFade;
 		// Lines step aside while a star simulation is showing: at that zoom they only cross its glow.
 		c.lines.opacity = c.opacity * skyFade.lines * motionFade * (1 - (starSim?.mix ?? 0));
-		c.items.forEach((item, i) => (item.hoverable = c.opacity > 0.5 && altitudes[i] > 0));
+		c.items.forEach((item, i) => (item.hoverable = c.opacity > 0.5 && aboveGround(altitudes[i])));
 	}
 	updateDeepSky();
 	updateComets(now, dt);
@@ -1629,7 +1728,7 @@ function updateSky(dt: number, t: number) {
 		// With reduced motion, no meteors fall (the radiants still show).
 		showers.update(now, dt, reduceMotion ? 0 : clockRate(), skyFade.stars, sinAlt);
 		showers.showers.forEach(({ shower, radiant, activity }, i) => {
-			items[i].hoverable = activity.active && sinAlt(radiant) > 0;
+			items[i].hoverable = activity.active && aboveGround(sinAlt(radiant));
 			items[i].detail = `Peaks ${shortDate(activity.window.peak)} · about ${Math.round(activity.rate)} an hour now · shown ${METEOR_SPEEDUP}× as often, more with the clock sped up · from ${shower.parent}`;
 		});
 	}
@@ -1652,10 +1751,10 @@ function updateSky(dt: number, t: number) {
 		altitude === null
 			? null
 			: Math.min(altitude + trackOffset.pitch, look.pitch, lowestAltitudeAhead(trackedItem!, now, dt) + trackOffset.pitch);
-	groundHidden = lowest !== null && groundWouldShow(lowest) ? 1 : groundHidden * Math.max(0, 1 - dt * 3);
+	// Looking around: hidden as soon as the view's center heads below the horizon.
+	const lookingDown = view === 'surface' && Math.min(look.pitch, lookTarget.pitch) < 0;
+	groundHidden = lookingDown || (lowest !== null && groundWouldShow(lowest)) ? 1 : groundHidden * Math.max(0, 1 - dt * 3);
 	showFollowNote(view === 'surface' ? trackedItem : null, following);
-	// Let go below the usual limit: ease back up to it.
-	if (!trackedItem && !drag.active && lookTarget.pitch < SKY_PITCH_MIN) lookTarget.pitch = SKY_PITCH_MIN;
 	// Past the usual limit only while locked onto a disk: let go, and ease back out to it.
 	if (skyZoom.target < zoomFloor()) skyZoom.target = zoomFloor();
 	if (trackedItem && view === 'surface' && !busy) aimAt(trackedItem);
@@ -1677,7 +1776,7 @@ function updateDeepSky() {
 	const dt = lastDeepSkyUpdate ? Math.min(0.1, (now - lastDeepSkyUpdate) / 1000) : 0;
 	lastDeepSkyUpdate = now;
 	for (const d of skyDeep) {
-		d.item.hoverable = constellationAltitudes([d.item])[0] > 0;
+		d.item.hoverable = aboveGround(constellationAltitudes([d.item])[0]);
 		const truePx = d.size[0] * pxPerRadian;
 		const enlarge = Math.max(1, DEEP_SKY_MIN_PX / truePx);
 		const scale = 2 * DEEP_SKY_DISTANCE * DEEP_SKY_IMAGE_SCALE * enlarge;
@@ -1772,7 +1871,7 @@ function updateComets(now: Date, dt: number) {
 		visual.update(state, { opacity, pxPerRadian, dt, inView: inView(visual.object.children[0]) });
 		item.local.copy(visual.head);
 		const bright = state.magnitude < COMET_LIMIT;
-		item.hoverable = bright && constellationAltitudes([item])[0] > 0;
+		item.hoverable = bright && aboveGround(constellationAltitudes([item])[0]);
 		item.name = `${comet.name} · ${state.distance.toFixed(2)} AU · magnitude ${state.magnitude.toFixed(1)}`;
 		item.detail = visual.showingPhoto() ? creditLine(cometImages[comet.id]) : comet.about;
 		// Frame the whole tail when locking on.
@@ -1837,11 +1936,10 @@ function updateBodies(now: Date) {
 				? `magnitude ${b.magnitude.toFixed(1)} · zoom in to see it`
 				: undefined;
 		const sinAlt = tmp.copy(dir).applyQuaternion(celestial!.quaternion).dot(surfaceFrame!.n);
-		item.up = sinAlt > 0;
 		// Too faint for this magnification, or a moon still lost in Jupiter's glare: not hoverable (yet).
 		const separationPx = moon ? dir.angleTo(jupiterDir) * pxPerRadian : Infinity;
 		const seen = smoothstep(limit + 1, limit - 1, b.magnitude) * (moon ? smoothstep(MOON_SEPARATION_PX * 0.6, MOON_SEPARATION_PX, separationPx) : 1);
-		item.hoverable = item.up && seen > 0.5;
+		item.hoverable = aboveGround(sinAlt) && seen > 0.5;
 		// Saturn's rings skip the depth test (see skyBodies.ts), so the ground can't hide them:
 		// hide bodies below the horizon outright. Not while the ground itself is hidden
 		// (following something below the horizon): then neighbors, like Jupiter's moons,

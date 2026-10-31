@@ -370,15 +370,22 @@ const label = (deg: number) => {
 	}
 
 	/**
-	 * Show an entry in the sky: lock onto it if it's on show, otherwise turn to face
-	 * where it is (or, below the horizon, the spot on the horizon it's under).
+	 * Show an entry in the sky, above or below the horizon (below, the ground vanishes
+	 * to show it): lock onto it, or face a constellation. Something not on show at all
+	 * (a shower that isn't active, a comet too faint): just turn to face where it is.
 	 */
 	function goTo(entry: FinderEntry): boolean {
 		const vis = visibility(entry, getObserver(), skyNow());
 		if (!vis) return false;
-		if (vis.shown && entry.key.startsWith('constellation:')) lookToward(vis.alt, vis.az, 60);
-		else if (!vis.shown || !lockOnto(entry.key)) lookToward(Math.max(vis.alt, 0.15), vis.az);
+		if (!lockable(entry)) lookToward(vis.alt, vis.az);
+		else if (entry.key.startsWith('constellation:')) lookToward(vis.alt, vis.az, 60);
+		else if (!lockOnto(entry.key)) lookToward(vis.alt, vis.az);
 		return vis.shown;
+	}
+
+	/** Can the telescope show an entry now, wherever it is in the sky? */
+	function lockable(entry: FinderEntry): boolean {
+		return entry.condition?.(skyNow()).ok ?? true;
 	}
 
 	document.addEventListener('astro:page-load', () => {
@@ -434,7 +441,11 @@ const label = (deg: number) => {
 						main.disabled = true;
 						return li;
 					}
-					main.title = vis?.shown ? 'Lock the telescope onto it' : 'Face the direction it is in';
+					main.title = !lockable(entry)
+						? 'Face the direction it is in'
+						: vis?.shown
+							? 'Lock the telescope onto it'
+							: 'Lock the telescope onto it, below the horizon';
 					main.addEventListener('click', () => {
 						goTo(entry);
 						close();

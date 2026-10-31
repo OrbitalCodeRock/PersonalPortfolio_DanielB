@@ -15,6 +15,7 @@ import type { BodyName } from './ephemeris';
 import { planetMaps } from '../data/skyImages';
 import { loadSkyImage } from './skyImageLoader';
 import { applyStarLook, starCoronaMaterial, starSurfaceMaterial, SUN_LOOK } from './skySun';
+import { hasWeather, weatherGlsl } from './skyWeather';
 
 export interface BodyVisual {
 	object: THREE.Group; // add it to the celestial sphere group
@@ -187,6 +188,7 @@ function bodyMaterial(name: BodyName): THREE.ShaderMaterial {
 			uOpacity: { value: 0 },
 			uMap: { value: null as THREE.Texture | null },
 			uMapMix: { value: 0 }, // 0 = painted surface, 1 = real map
+			uTime: { value: 0 }, // seconds, for the planets with live weather (skyWeather.ts)
 		},
 		defines: {
 			LIMB_DARKENING: sun ? '0.85' : gasGiant ? '0.6' : '0.2',
@@ -223,6 +225,7 @@ function bodyMaterial(name: BodyName): THREE.ShaderMaterial {
 			varying vec3 vSunV;
 			varying vec2 vUv;
 			${NOISE}
+			${weatherGlsl(name)}
 			vec3 surface(vec3 p) {
 				${SURFACES[name]}
 			}
@@ -234,7 +237,8 @@ function bodyMaterial(name: BodyName): THREE.ShaderMaterial {
 				float shade = day * (0.45 + 0.55 * max(light, 0.0));
 				float limb = mix(1.0, pow(max(dot(n, toViewer), 0.0), 0.35), LIMB_DARKENING);
 				vec3 base = surface(vLocal);
-				if (uMapMix > 0.0) base = mix(base, texture2D(uMap, vUv).rgb, uMapMix);
+				// The real map, drawn moving for planets with weather (jets, eddies, extras).
+				if (uMapMix > 0.0) base = mix(base, weatherColor(texture2D(uMap, weatherUv(vUv)).rgb, vUv), uMapMix);
 				if (EMISSIVE > 0) shade = 1.0;
 				gl_FragColor = vec4(base * (shade * limb + EARTHSHINE), uOpacity);
 				#include <colorspace_fragment>
@@ -317,17 +321,51 @@ function ringMaterial(flattening: number): THREE.ShaderMaterial {
 	});
 }
 
+const spheres = new Map<string, THREE.SphereGeometry>();
+
+/**
+ * A unit sphere with longitude 0 (the middle of a map) toward +z, made once per
+ * level of detail and shared by every body and every sky view (userData.shared:
+ * the sky view keeps it when it's taken down). Building them is slow enough to
+ * notice, so prewarmBodies does it ahead of time.
+ */
+export function bodySphere(widthSegments: number, heightSegments: number): THREE.SphereGeometry {
+	const key = `${widthSegments}x${heightSegments}`;
+	let geometry = spheres.get(key);
+	if (!geometry) {
+		geometry = new THREE.SphereGeometry(1, widthSegments, heightSegments);
+		// Map longitude 0 to +z, the side facing us: for the Moon, that's its near side,
+		// which always faces Earth.
+		geometry.rotateY(-Math.PI / 2);
+		geometry.userData.shared = true;
+		spheres.set(key, geometry);
+	}
+	return geometry;
+}
+
+// Enough segments that the edge stays round even filling the screen at the deepest
+// zoom (and, for the Sun, meets its round corona without slivers).
+const SUN_SEGMENTS = [384, 192] as const;
+const BODY_SEGMENTS = [160, 80] as const;
+
+/** Build the bodies' spheres ahead of time, one per call (true once there are none left). */
+export function prewarmBodies(): boolean {
+	for (const [w, h] of [BODY_SEGMENTS, SUN_SEGMENTS]) {
+		if (!spheres.has(`${w}x${h}`)) {
+			bodySphere(w, h);
+			return false;
+		}
+	}
+	return true;
+}
+
 export function createBodyVisual(name: BodyName): BodyVisual {
 	const object = new THREE.Group();
 	// The Sun is a live simulation (skySun.ts) rather than a painted or mapped globe.
 	const material = name === 'Sun' ? starSurfaceMaterial() : bodyMaterial(name);
-	// Enough segments that the edge stays round even filling the screen at the deepest
-	// zoom (and, for the Sun, meets its round corona without slivers).
-	const geometry = name === 'Sun' ? new THREE.SphereGeometry(1, 384, 192) : new THREE.SphereGeometry(1, 160, 80);
-	// Map longitude 0 (the middle of the map) to +z, the side facing us: for the Moon,
-	// that's its near side, which always faces Earth.
-	geometry.rotateY(-Math.PI / 2);
-	const sphere = new THREE.Mesh(geometry, material);
+	const weather = hasWeather(name);
+	const [w, h] = name === 'Sun' ? SUN_SEGMENTS : BODY_SEGMENTS;
+	const sphere = new THREE.Mesh(bodySphere(w, h), material);
 	sphere.renderOrder = 1;
 	object.add(sphere);
 
@@ -386,6 +424,7 @@ export function createBodyVisual(name: BodyName): BodyVisual {
 		},
 		update(opacity, simMs, diskPx) {
 			material.uniforms.uOpacity.value = opacity;
+			if (weather) material.uniforms.uTime.value = performance.now() / 1000;
 			if (corona) {
 				// The Sun's surface and corona move in real time, whatever the sky's clock does.
 				const seconds = performance.now() / 1000;
@@ -397,6 +436,9 @@ export function createBodyVisual(name: BodyName): BodyVisual {
 				mapRequested = true;
 				loadSkyImage(mapUrl)
 					.then(({ texture }) => {
+						// Wrap around in longitude: the weather slides the map past its seam.
+						texture.wrapS = THREE.RepeatWrapping;
+						texture.needsUpdate = true;
 						material.uniforms.uMap.value = texture;
 						mapLoaded = true;
 					})
