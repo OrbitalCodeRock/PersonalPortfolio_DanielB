@@ -47,6 +47,11 @@ const path = Astro.url.pathname;
 		<main class="container" transition:animate="slide">
 			<slot />
 		</main>
+		<!-- Its own transition layer too, like the header. -->
+		<footer class="site-footer container" transition:name="site-footer">
+			<span>© 2026 Daniel Beyer</span>
+			<a href="/credits" aria-current={path.startsWith('/credits') ? 'page' : undefined}>Credits</a>
+		</footer>
 	</body>
 </html>
 
@@ -84,6 +89,23 @@ const path = Astro.url.pathname;
 	}
 	main {
 		padding-block: 32px 80px;
+	}
+	.site-footer {
+		display: flex;
+		gap: 8px 20px;
+		flex-wrap: wrap;
+		padding-block: 0 28px;
+		color: var(--text-muted);
+		font-size: 0.8rem;
+	}
+	.site-footer a {
+		color: var(--text-muted);
+		text-decoration: none;
+		transition: color 0.2s;
+	}
+	.site-footer a:hover,
+	.site-footer a[aria-current='page'] {
+		color: var(--text);
 	}
 	@media (max-width: 720px) {
 		.site-header {

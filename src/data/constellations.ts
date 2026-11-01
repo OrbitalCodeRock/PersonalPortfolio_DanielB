@@ -14,6 +14,10 @@ export interface SkyStar {
 	mag: number;
 	bv: number;
 	ly: number; // distance in light-years (rounded; the farthest are uncertain)
+	// Proper motion, for the stars that drift fastest across the sky (milliarcseconds a
+	// year): [east (μα·cos δ), north], Hipparcos and Gaia. Over centuries it adds up:
+	// Barnard's Star has crept almost 3° since the year 1000. Positions are for J2000.
+	pm?: [number, number];
 }
 
 export interface Constellation {
@@ -137,8 +141,8 @@ export const constellations: Constellation[] = [
 	{
 		name: 'Gemini',
 		stars: [
-			{ name: 'Castor', ra: 7.577, dec: 31.89, mag: 1.58, bv: 0.03, ly: 51 },
-			{ name: 'Pollux', ra: 7.755, dec: 28.03, mag: 1.14, bv: 1, ly: 34 },
+			{ name: 'Castor', ra: 7.577, dec: 31.89, mag: 1.58, bv: 0.03, ly: 51, pm: [-191.45, -145.19] },
+			{ name: 'Pollux', ra: 7.755, dec: 28.03, mag: 1.14, bv: 1, ly: 34, pm: [-626.55, -45.8] },
 			{ name: 'Alhena', ra: 6.629, dec: 16.4, mag: 1.93, bv: 0, ly: 109 },
 			{ name: 'Mebsuta', ra: 6.732, dec: 25.13, mag: 2.98, bv: 1.38, ly: 840 },
 			{ name: 'Tejat', ra: 6.383, dec: 22.51, mag: 2.87, bv: 1.64, ly: 230 },
@@ -174,8 +178,8 @@ export const constellations: Constellation[] = [
 	{
 		name: 'Leo',
 		stars: [
-			{ name: 'Regulus', ra: 10.139, dec: 11.97, mag: 1.35, bv: -0.11, ly: 79 },
-			{ name: 'Denebola', ra: 11.818, dec: 14.57, mag: 2.13, bv: 0.09, ly: 36 },
+			{ name: 'Regulus', ra: 10.139, dec: 11.97, mag: 1.35, bv: -0.11, ly: 79, pm: [-248.73, 5.59] },
+			{ name: 'Denebola', ra: 11.818, dec: 14.57, mag: 2.13, bv: 0.09, ly: 36, pm: [-497.68, -114.67] },
 			{ name: 'Algieba', ra: 10.333, dec: 19.84, mag: 2.08, bv: 1.15, ly: 130 },
 			{ name: 'Zosma', ra: 11.235, dec: 20.52, mag: 2.56, bv: 0.12, ly: 58 },
 			{ name: 'Chertan', ra: 11.237, dec: 15.43, mag: 3.33, bv: 0, ly: 165 },
@@ -306,7 +310,7 @@ export const constellations: Constellation[] = [
 	{
 		name: 'Canis Major',
 		stars: [
-			{ name: 'Sirius', ra: 6.752, dec: -16.72, mag: -1.46, bv: 0, ly: 8.6 },
+			{ name: 'Sirius', ra: 6.752, dec: -16.72, mag: -1.46, bv: 0, ly: 8.6, pm: [-546.01, -1223.07] },
 			{ name: 'Mirzam', ra: 6.378, dec: -17.96, mag: 1.98, bv: -0.23, ly: 490 },
 			{ name: 'Adhara', ra: 6.977, dec: -28.97, mag: 1.5, bv: -0.21, ly: 430 },
 			{ name: 'Wezen', ra: 7.14, dec: -26.39, mag: 1.83, bv: 0.68, ly: 1600 },
@@ -326,7 +330,7 @@ export const constellations: Constellation[] = [
 	{
 		name: 'Canis Minor',
 		stars: [
-			{ name: 'Procyon', ra: 7.655, dec: 5.22, mag: 0.34, bv: 0.42, ly: 11.5 },
+			{ name: 'Procyon', ra: 7.655, dec: 5.22, mag: 0.34, bv: 0.42, ly: 11.5, pm: [-714.59, -1036.8] },
 			{ name: 'Gomeisa', ra: 7.453, dec: 8.29, mag: 2.89, bv: -0.1, ly: 160 },
 		],
 		lines: [
@@ -336,7 +340,7 @@ export const constellations: Constellation[] = [
 	{
 		name: 'Taurus',
 		stars: [
-			{ name: 'Aldebaran', ra: 4.599, dec: 16.51, mag: 0.86, bv: 1.54, ly: 65 },
+			{ name: 'Aldebaran', ra: 4.599, dec: 16.51, mag: 0.86, bv: 1.54, ly: 65, pm: [63.45, -188.94] },
 			{ name: 'Elnath', ra: 5.438, dec: 28.61, mag: 1.65, bv: -0.13, ly: 134 },
 			{ name: 'Tianguan', ra: 5.627, dec: 21.14, mag: 3, bv: -0.19, ly: 440 },
 			{ name: 'Ain', ra: 4.477, dec: 19.18, mag: 3.53, bv: 1.01, ly: 147 },
@@ -359,7 +363,7 @@ export const constellations: Constellation[] = [
 	{
 		name: 'Auriga',
 		stars: [
-			{ name: 'Capella', ra: 5.278, dec: 46, mag: 0.08, bv: 0.8, ly: 43 },
+			{ name: 'Capella', ra: 5.278, dec: 46, mag: 0.08, bv: 0.8, ly: 43, pm: [75.52, -427.11] },
 			{ name: 'Menkalinan', ra: 5.992, dec: 44.95, mag: 1.9, bv: 0.08, ly: 81 },
 			{ name: 'Mahasim', ra: 5.995, dec: 37.21, mag: 2.65, bv: -0.08, ly: 166 },
 			{ name: 'Hassaleh', ra: 4.95, dec: 33.17, mag: 2.69, bv: 1.53, ly: 490 },
@@ -378,7 +382,7 @@ export const constellations: Constellation[] = [
 	{
 		name: 'Cassiopeia',
 		stars: [
-			{ name: 'Caph', ra: 0.153, dec: 59.15, mag: 2.28, bv: 0.34, ly: 55 },
+			{ name: 'Caph', ra: 0.153, dec: 59.15, mag: 2.28, bv: 0.34, ly: 55, pm: [523.39, -180.42] },
 			{ name: 'Schedar', ra: 0.675, dec: 56.54, mag: 2.24, bv: 1.17, ly: 228 },
 			{ name: 'Navi', ra: 0.945, dec: 60.72, mag: 2.15, bv: -0.15, ly: 550 },
 			{ name: 'Ruchbah', ra: 1.43, dec: 60.24, mag: 2.66, bv: 0.13, ly: 99 },
@@ -410,7 +414,7 @@ export const constellations: Constellation[] = [
 	{
 		name: 'Boötes',
 		stars: [
-			{ name: 'Arcturus', ra: 14.261, dec: 19.18, mag: -0.05, bv: 1.23, ly: 37 },
+			{ name: 'Arcturus', ra: 14.261, dec: 19.18, mag: -0.05, bv: 1.23, ly: 37, pm: [-1093.39, -1999.4] },
 			{ name: 'Izar', ra: 14.75, dec: 27.07, mag: 2.37, bv: 0.97, ly: 200 },
 			{ name: 'Muphrid', ra: 13.911, dec: 18.4, mag: 2.68, bv: 0.58, ly: 37 },
 			{ name: 'Seginus', ra: 14.535, dec: 38.31, mag: 3.03, bv: 0.19, ly: 85 },
@@ -432,10 +436,10 @@ export const constellations: Constellation[] = [
 		name: 'Virgo',
 		stars: [
 			{ name: 'Spica', ra: 13.42, dec: -11.16, mag: 0.97, bv: -0.23, ly: 250 },
-			{ name: 'Porrima', ra: 12.694, dec: -1.45, mag: 2.74, bv: 0.36, ly: 38 },
+			{ name: 'Porrima', ra: 12.694, dec: -1.45, mag: 2.74, bv: 0.36, ly: 38, pm: [-616.66, 60.66] },
 			{ name: 'Vindemiatrix', ra: 13.036, dec: 10.96, mag: 2.85, bv: 0.94, ly: 110 },
 			{ name: 'Minelauva', ra: 12.927, dec: 3.4, mag: 3.38, bv: 1.58, ly: 200 },
-			{ name: 'Zavijava', ra: 11.845, dec: 1.76, mag: 3.61, bv: 0.55, ly: 36 },
+			{ name: 'Zavijava', ra: 11.845, dec: 1.76, mag: 3.61, bv: 0.55, ly: 36, pm: [740.23, -270.43] },
 			{ name: 'Heze', ra: 13.578, dec: -0.6, mag: 3.38, bv: 0.11, ly: 74 },
 			{ name: 'Zaniah', ra: 12.332, dec: -0.67, mag: 3.89, bv: 0.02, ly: 250 },
 		],
@@ -452,7 +456,7 @@ export const constellations: Constellation[] = [
 	{
 		name: 'Lyra',
 		stars: [
-			{ name: 'Vega', ra: 18.616, dec: 38.78, mag: 0.03, bv: 0, ly: 25 },
+			{ name: 'Vega', ra: 18.616, dec: 38.78, mag: 0.03, bv: 0, ly: 25, pm: [200.94, 286.23] },
 			{ name: 'Sheliak', ra: 18.835, dec: 33.36, mag: 3.52, bv: 0, ly: 960 },
 			{ name: 'Sulafat', ra: 18.982, dec: 32.69, mag: 3.25, bv: -0.05, ly: 620 },
 			{ name: 'Delta2 Lyr', ra: 18.908, dec: 36.9, mag: 4.3, bv: 1.68, ly: 900 },
@@ -471,7 +475,7 @@ export const constellations: Constellation[] = [
 	{
 		name: 'Aquila',
 		stars: [
-			{ name: 'Altair', ra: 19.846, dec: 8.87, mag: 0.77, bv: 0.22, ly: 16.7 },
+			{ name: 'Altair', ra: 19.846, dec: 8.87, mag: 0.77, bv: 0.22, ly: 16.7, pm: [536.23, 385.29] },
 			{ name: 'Tarazed', ra: 19.771, dec: 10.61, mag: 2.72, bv: 1.52, ly: 400 },
 			{ name: 'Alshain', ra: 19.922, dec: 6.41, mag: 3.71, bv: 0.86, ly: 45 },
 			{ name: 'Delta Aql', ra: 19.425, dec: 3.11, mag: 3.36, bv: 0.32, ly: 50 },
@@ -575,18 +579,18 @@ export const constellations: Constellation[] = [
 export const looseStars: (SkyStar & { constellation: string })[] = [
 	{ name: 'Canopus', constellation: 'Carina', ra: 6.399, dec: -52.7, mag: -0.74, bv: 0.15, ly: 310 },
 	{ name: 'Achernar', constellation: 'Eridanus', ra: 1.629, dec: -57.24, mag: 0.46, bv: -0.16, ly: 139 },
-	{ name: 'Fomalhaut', constellation: 'Piscis Austrinus', ra: 22.961, dec: -29.62, mag: 1.16, bv: 0.09, ly: 25 },
-	{ name: 'Alpha Centauri', constellation: 'Centaurus', ra: 14.66, dec: -60.83, mag: -0.27, bv: 0.71, ly: 4.37 },
+	{ name: 'Fomalhaut', constellation: 'Piscis Austrinus', ra: 22.961, dec: -29.62, mag: 1.16, bv: 0.09, ly: 25, pm: [328.95, -164.67] },
+	{ name: 'Alpha Centauri', constellation: 'Centaurus', ra: 14.66, dec: -60.83, mag: -0.27, bv: 0.71, ly: 4.37, pm: [-3679.25, 473.67] },
 	{ name: 'Hadar', constellation: 'Centaurus', ra: 14.064, dec: -60.37, mag: 0.61, bv: -0.23, ly: 390 },
-	{ name: 'Proxima Centauri', constellation: 'Centaurus', ra: 14.495, dec: -62.68, mag: 11.13, bv: 1.82, ly: 4.24 },
+	{ name: 'Proxima Centauri', constellation: 'Centaurus', ra: 14.495, dec: -62.68, mag: 11.13, bv: 1.82, ly: 4.24, pm: [-3781.31, 769.77] },
 	{ name: 'Algol', constellation: 'Perseus', ra: 3.136, dec: 40.96, mag: 2.12, bv: -0.05, ly: 90 },
 	{ name: 'Mirfak', constellation: 'Perseus', ra: 3.405, dec: 49.86, mag: 1.79, bv: 0.48, ly: 510 },
 	{ name: 'Mira', constellation: 'Cetus', ra: 2.322, dec: -2.98, mag: 3, bv: 1.8, ly: 300 },
-	{ name: 'Tau Ceti', constellation: 'Cetus', ra: 1.734, dec: -15.94, mag: 3.5, bv: 0.72, ly: 11.9 },
-	{ name: 'Epsilon Eridani', constellation: 'Eridanus', ra: 3.549, dec: -9.46, mag: 3.73, bv: 0.88, ly: 10.5 },
+	{ name: 'Tau Ceti', constellation: 'Cetus', ra: 1.734, dec: -15.94, mag: 3.5, bv: 0.72, ly: 11.9, pm: [-1721.05, 854.16] },
+	{ name: 'Epsilon Eridani', constellation: 'Eridanus', ra: 3.549, dec: -9.46, mag: 3.73, bv: 0.88, ly: 10.5, pm: [-975.17, 19.49] },
 	{ name: 'Alphard', constellation: 'Hydra', ra: 9.46, dec: -8.66, mag: 1.99, bv: 1.44, ly: 180 },
-	{ name: 'Rasalhague', constellation: 'Ophiuchus', ra: 17.582, dec: 12.56, mag: 2.08, bv: 0.15, ly: 49 },
-	{ name: "Barnard's Star", constellation: 'Ophiuchus', ra: 17.963, dec: 4.69, mag: 9.5, bv: 1.74, ly: 6 },
+	{ name: 'Rasalhague', constellation: 'Ophiuchus', ra: 17.582, dec: 12.56, mag: 2.08, bv: 0.15, ly: 49, pm: [108.07, -221.57] },
+	{ name: "Barnard's Star", constellation: 'Ophiuchus', ra: 17.963, dec: 4.69, mag: 9.5, bv: 1.74, ly: 6, pm: [-802.8, 10362.5] },
 	{ name: 'Thuban', constellation: 'Draco', ra: 14.073, dec: 64.38, mag: 3.65, bv: -0.05, ly: 300 },
 	{ name: 'Eltanin', constellation: 'Draco', ra: 17.943, dec: 51.49, mag: 2.24, bv: 1.52, ly: 154 },
 	{ name: 'Alnair', constellation: 'Grus', ra: 22.137, dec: -46.96, mag: 1.74, bv: -0.13, ly: 101 },

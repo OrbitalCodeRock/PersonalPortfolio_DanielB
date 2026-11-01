@@ -15,7 +15,7 @@ import { solarSystem, type BodyName } from './ephemeris';
 import { showerActivity } from './meteors';
 import { GRB_LEAD_SECONDS, transientAge, transientShowing, transientState, transientWindow } from './transients';
 import { formatClock, formatDay, formatMoment, formatMonthYear, skyZone } from './skyTime';
-import { altAz, type Observer } from './sky';
+import { altAz, starAt, type Observer } from './sky';
 
 export interface FinderEntry {
 	key: string; // matches the sky item's key in cosmos.ts ('' for objects not included)
@@ -171,7 +171,7 @@ export const finderEntries: FinderEntry[] = [
 		kind: BODY_KINDS[name],
 		terms: `${name} ${ALIASES[name] ?? ''}`.toLowerCase(),
 		included: true,
-		position: (date: Date) => solarSystem(date).bodies.find((b) => b.name === name)!,
+		position: (date: Date) => solarSystem(date, [name]).bodies[0],
 	})),
 	...constellations.map((c) => ({
 		key: `constellation:${c.name}`,
@@ -189,7 +189,7 @@ export const finderEntries: FinderEntry[] = [
 			kind: `Star in ${c.name}`,
 			terms: `${s.name} ${ALIASES[s.name] ?? ''}`.toLowerCase(),
 			included: true,
-			position: () => ({ ra: s.ra, dec: s.dec }),
+			position: (date: Date) => starAt(s, date),
 			group: c.name,
 		})),
 	),
@@ -199,7 +199,7 @@ export const finderEntries: FinderEntry[] = [
 		kind: `Star in ${s.constellation}`,
 		terms: `${s.name} ${s.constellation} ${ALIASES[s.name] ?? ''}`.toLowerCase(),
 		included: true,
-		position: () => ({ ra: s.ra, dec: s.dec }),
+		position: (date: Date) => starAt(s, date),
 	})),
 	...comets.map((c) => ({
 		key: `comet:${c.id}`,
@@ -348,7 +348,10 @@ function shownAt(entry: FinderEntry, obs: Observer, date: Date): boolean {
 	if (entry.condition && !entry.condition(date).ok) return false;
 	if (entry.group) {
 		const c = constellations.find((k) => k.name === entry.group)!;
-		return c.stars.every((s) => altAz(s.ra, s.dec, obs, date).alt > 0);
+		return c.stars.every((s) => {
+			const at = starAt(s, date);
+			return altAz(at.ra, at.dec, obs, date).alt > 0;
+		});
 	}
 	return (entryAltAz(entry, obs, date)?.alt ?? -1) > 0;
 }

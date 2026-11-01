@@ -1,7 +1,8 @@
 ---
-// Credits for the real images the sky view shows when the telescope zooms in.
-// Each was resized and recompressed for the web; the source link has the original
-// and its full license terms.
+// Credits for the real images the sky view shows when the telescope zooms in, and
+// for the third-party code the site runs. Each image was resized and recompressed for
+// the web; the source link has the original. Each license name links to its terms;
+// the code's full license notices are at /licenses.txt (licenses.txt.ts).
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { deepSky } from '../data/deepSky';
 import { comets } from '../data/comets';
@@ -20,6 +21,23 @@ const deep = deepSky
 const cometRows = comets
 	.filter((c) => cometImages[c.id])
 	.map((c) => ({ name: `${c.name} (${c.designation})`, credit: cometImages[c.id] }));
+// The license terms each license name links to (public domain needs none).
+const LICENSE_TERMS: Record<string, string> = {
+	'CC BY 2.0': 'https://creativecommons.org/licenses/by/2.0/',
+	'CC BY 4.0': 'https://creativecommons.org/licenses/by/4.0/',
+	'CC BY-SA 2.5': 'https://creativecommons.org/licenses/by-sa/2.5/',
+	'CC BY-SA 3.0': 'https://creativecommons.org/licenses/by-sa/3.0/',
+	'CC BY-SA 4.0': 'https://creativecommons.org/licenses/by-sa/4.0/',
+	CC0: 'https://creativecommons.org/publicdomain/zero/1.0/',
+	MIT: '/licenses.txt',
+	'Standard No Charge License': 'https://gsap.com/standard-license',
+};
+const code = [
+	{ name: 'three.js', credit: { artist: 'three.js authors', license: 'MIT', source: 'https://github.com/mrdoob/three.js' } },
+	{ name: 'GSAP', credit: { artist: 'GreenSock', license: 'Standard No Charge License', source: 'https://gsap.com' } },
+	{ name: 'Astronomy Engine', credit: { artist: 'Don Cross', license: 'MIT', source: 'https://github.com/cosinekitty/astronomy' } },
+	{ name: 'Astro', credit: { artist: 'Astro contributors', license: 'MIT', source: 'https://github.com/withastro/astro' } },
+];
 const sections = [
 	{
 		title: 'Moon, planets and smaller worlds',
@@ -29,17 +47,23 @@ const sections = [
 	},
 	{ title: 'Galaxies, nebulae and star clusters', intro: 'Photos shown in place of the drawn images when you zoom in.', rows: deep },
 	{ title: 'Comets', intro: "Photos laid along a comet's drawn tail when you zoom in on it.", rows: cometRows },
+	{
+		title: 'Code',
+		intro: 'Libraries the site runs on. Astronomy Engine works out where the Sun, the Moon and the planets are at any moment.',
+		rows: code,
+	},
 ];
 ---
 
-<BaseLayout title="Image Credits" description="Credits and licenses for the astronomy images used on this site.">
-	<h1>Image credits</h1>
+<BaseLayout title="Credits" description="Credits and licenses for the astronomy images and code used on this site.">
+	<h1>Credits</h1>
 	<p class="intro">
 		The sky view swaps in real images as you zoom in. They come from Wikimedia Commons, NASA, ESA, ESO and
 		astrophotographers who share their work under open licenses. Each was resized and recompressed for the web;
 		follow the source link for the original and its full license. The Sun, the close-up star images, the drawn
 		galaxies, nebulae and comet tails, the planets' rings, the meteors, and the supernovae and gamma-ray bursts
-		are made in code.
+		are made in code. The libraries the site runs on are listed at the end, with their full license notices
+		in <a href="/licenses.txt">licenses.txt</a>.
 	</p>
 
 	{
@@ -52,7 +76,15 @@ const sections = [
 						<li>
 							<strong>{name}</strong>
 							<span>
-								{credit.artist} · {credit.license} ·{' '}
+								{credit.artist} ·{' '}
+								{LICENSE_TERMS[credit.license] ? (
+									<a href={LICENSE_TERMS[credit.license]} target="_blank" rel="noopener">
+										{credit.license}
+									</a>
+								) : (
+									credit.license
+								)}{' '}
+								·{' '}
 								<a href={credit.source} target="_blank" rel="noopener">
 									source
 								</a>

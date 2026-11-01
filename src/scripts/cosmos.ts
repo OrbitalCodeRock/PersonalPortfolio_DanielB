@@ -14,8 +14,10 @@ import {
 	chooseSky,
 	equatorialVector,
 	getObserver,
+	precessionMatrix,
 	siderealAngle,
 	skyNow,
+	starAt,
 	clockRate,
 	holdClock,
 	useLocationIfAllowed,
@@ -261,6 +263,17 @@ let skyMeteors: { showers: MeteorShowers; items: SkyItem[] } | null = null;
 let skyTransients: { events: SkyTransients; items: SkyItem[] } | null = null;
 // Famous stars without a stick figure (looseStars), each shown whenever it's up.
 let skyLoose: { items: SkyItem[]; stars: THREE.ShaderMaterial } | null = null;
+// Stars that drift across the sky over the centuries (proper motion), and where each
+// is drawn (its point and line ends): moveStars re-places them as the clock runs.
+interface MovingStar {
+	star: SkyStar;
+	item: SkyItem;
+	spots: { attribute: THREE.BufferAttribute; index: number }[];
+}
+let movingStars: MovingStar[] = [];
+let starsPlacedAt = 0; // the sky time (ms) they were last placed for
+// How far the clock moves before they're re-placed: a month moves the fastest, Barnard's Star, under 1″.
+const STAR_MOVE_MS = 30 * 24 * 3600 * 1000;
 // The star simulation shown on the star being zoomed into (one at a time).
 let starSim: {
 	group: THREE.Group;
@@ -1203,6 +1216,7 @@ export function lookToward(alt: number, az: number, fov?: number) {
 	trackedItem = null;
 	autoZoomOut = false;
 	panGlide = null;
+	driveCenter = null; // or the telescope drive, zoomed in, would carry the view back to where it was
 	if (fov !== undefined) stopWideningView();
 	lookTarget.yaw = az + 2 * Math.PI * Math.round((look.yaw - az) / (2 * Math.PI)); // the short way round
 	lookTarget.pitch = clamp(alt, SKY_PITCH_MIN, SKY_PITCH_MAX);
@@ -1416,7 +1430,7 @@ function buildSky(): { yaw: number; pitch: number } {
 
 	// Every constellation; updateSky shows each one while it's fully above the horizon.
 	for (const constellation of constellations) {
-		const local = new Map(constellation.stars.map((s) => [s.name, celestialDir(s.ra, s.dec).multiplyScalar(SKY_RADIUS)]));
+		const local = new Map(constellation.stars.map((s) => [s.name, starLocal(s, now)]));
 		const items: SkyItem[] = constellation.stars.map((s) => ({
 			key: `star:${s.name}`,
 			name: `${s.name} · ${constellation.name} · ${s.ly.toLocaleString('en-US')} light-years`, // "Star · Constellation · distance"
@@ -1438,7 +1452,14 @@ function buildSky(): { yaw: number; pitch: number } {
 		markStars(items, constellation.stars, geometry);
 		const lines = new THREE.LineBasicMaterial({ color: 0x8fb8ff, transparent: true, opacity: 0 });
 		const linePoints = constellation.lines.flatMap(([a, b]) => [local.get(a)!, local.get(b)!]);
-		celestial.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(linePoints), lines));
+		const lineGeometry = new THREE.BufferGeometry().setFromPoints(linePoints);
+		celestial.add(new THREE.LineSegments(lineGeometry, lines));
+		constellation.stars.forEach((s, i) => {
+			if (!s.pm) return;
+			const ends = linePoints.flatMap((p, k) => (p === items[i].local ? [k] : []));
+			const spot = (geometryOf: THREE.BufferGeometry, index: number) => ({ attribute: geometryOf.getAttribute('position') as THREE.BufferAttribute, index });
+			movingStars.push({ star: s, item: items[i], spots: [spot(geometry, i), ...ends.map((k) => spot(lineGeometry, k))] });
+		});
 		const up = constellationAltitudes(items).every((sinAlt) => sinAlt > 0);
 		skyConstellations.push({ items, stars, lines, opacity: up ? 1 : 0 });
 		skyItems.push(...items);
@@ -1449,7 +1470,7 @@ function buildSky(): { yaw: number; pitch: number } {
 		const items: SkyItem[] = looseStars.map((s) => ({
 			key: `star:${s.name}`,
 			name: `${s.name} · ${s.constellation} · ${s.ly.toLocaleString('en-US')} light-years`,
-			local: celestialDir(s.ra, s.dec).multiplyScalar(SKY_RADIUS),
+			local: starLocal(s, now),
 			hoverable: false,
 			detail: starDetail(s),
 		}));
@@ -1466,6 +1487,10 @@ function buildSky(): { yaw: number; pitch: number } {
 		);
 		celestial.add(new THREE.Points(geometry, material));
 		markStars(items, looseStars, geometry);
+		looseStars.forEach((s, i) => {
+			if (s.pm) movingStars.push({ star: s, item: items[i], spots: [{ attribute: geometry.getAttribute('position') as THREE.BufferAttribute, index: i }] });
+		});
+		starsPlacedAt = now.getTime();
 		skyLoose = { items, stars: material };
 		skyItems.push(...items);
 	}
@@ -1734,6 +1759,7 @@ function removeSky(keepShaders = false) {
 	skyItems = [];
 	skyConstellations = [];
 	skyLoose = null;
+	movingStars = [];
 	skyBodies = [];
 	skyDeep = [];
 	skyComets = [];
@@ -1755,7 +1781,8 @@ function removeSky(keepShaders = false) {
  * observer. In the landing frame (t north, r east, n up), the celestial pole sits
  * at the observer's latitude above the northern horizon, and the sphere has
  * turned by the local sidereal time; this builds that rotation from the
- * equatorial axes (x to RA 0h, y to RA 6h, z to the pole).
+ * equatorial axes (x to RA 0h, y to RA 6h, z to the pole). Everything on the
+ * sphere is placed in J2000 coordinates, so it's precessed to the date's first.
  */
 function orientCelestial(date: Date) {
 	const { n, t, r } = surfaceFrame!;
@@ -1767,8 +1794,14 @@ function orientCelestial(date: Date) {
 	const lst = siderealAngle(obs, date);
 	const x = meridian.clone().multiplyScalar(Math.cos(lst)).addScaledVector(west, Math.sin(lst));
 	const y = meridian.clone().multiplyScalar(Math.sin(lst)).addScaledVector(west, -Math.cos(lst));
-	celestial!.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, pole));
+	const precession = new THREE.Matrix4().setFromMatrix3(precessionAt(date));
+	celestial!.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, pole).multiply(precession));
 	celestial!.updateMatrixWorld(true);
+}
+
+/** Precession from J2000 to a date's equator (sky.ts precessionMatrix) as a Three.js matrix. */
+function precessionAt(date: Date): THREE.Matrix3 {
+	return new THREE.Matrix3().fromArray(precessionMatrix(date)).transpose(); // fromArray reads columns; it's given rows
 }
 
 /** Sine of the altitude of each item (above the horizon when positive). */
@@ -1797,6 +1830,7 @@ function worldOf(item: SkyItem, out = new THREE.Vector3()): THREE.Vector3 {
 function updateSky(dt: number, t: number) {
 	const now = skyNow();
 	orientCelestial(now);
+	moveStars(now);
 	starUniforms.uTime.value = t;
 	starUniforms.uScale.value = renderer.getPixelRatio() * window.innerHeight * 0.5;
 	starUniforms.uZoom.value = NAKED_EYE_FOV / camera.fov;
@@ -2045,10 +2079,13 @@ function updateComets(now: Date, dt: number) {
 function updateBodies(now: Date) {
 	const obs = getObserver();
 	const { bodies } = solarSystem(now);
-	// The visitor's position on Earth, on the celestial sphere (RA = local sidereal time, Dec = latitude).
+	// The visitor's position on Earth, on the celestial sphere (RA = local sidereal time, Dec = latitude,
+	// for the date's equator), turned back to J2000 like everything else placed on it.
 	const lst = siderealAngle(obs, now);
 	const lat = THREE.MathUtils.degToRad(obs.lat);
-	const zenith = new THREE.Vector3(Math.cos(lat) * Math.cos(lst), Math.cos(lat) * Math.sin(lst), Math.sin(lat));
+	const zenith = new THREE.Vector3(Math.cos(lat) * Math.cos(lst), Math.cos(lat) * Math.sin(lst), Math.sin(lat)).applyMatrix3(
+		precessionAt(now).transpose(),
+	);
 	const pxPerRadian = window.innerHeight / 2 / Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
 	// The faintest magnitude the telescope shows at this magnification.
 	const limit = NAKED_EYE_LIMIT + MAGNITUDE_PER_DECADE * Math.log10(Math.max(1, NAKED_EYE_FOV / camera.fov));
@@ -2520,6 +2557,25 @@ const STAR_TYPES: { maxBv: number; label: string; core: string; halo: [number, n
 ];
 
 /** Give each star's item its spectral type and its point of light in the geometry. */
+/** Where a catalog star sits on the celestial sphere at a date (with its proper motion). */
+function starLocal(s: SkyStar, date: Date): THREE.Vector3 {
+	const at = starAt(s, date);
+	return celestialDir(at.ra, at.dec).multiplyScalar(SKY_RADIUS);
+}
+
+/** Re-place the stars with proper motion once the clock has moved far enough. */
+function moveStars(date: Date) {
+	if (Math.abs(date.getTime() - starsPlacedAt) < STAR_MOVE_MS) return;
+	starsPlacedAt = date.getTime();
+	for (const { star, item, spots } of movingStars) {
+		item.local.copy(starLocal(star, date));
+		for (const { attribute, index } of spots) {
+			attribute.setXYZ(index, item.local.x, item.local.y, item.local.z);
+			attribute.needsUpdate = true;
+		}
+	}
+}
+
 function markStars(items: SkyItem[], stars: SkyStar[], geometry: THREE.BufferGeometry) {
 	const sizes = geometry.getAttribute('aSize') as THREE.BufferAttribute;
 	items.forEach((item, i) => {

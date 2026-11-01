@@ -1,7 +1,7 @@
 // Where real stars are in the visitor's sky: converts catalog positions to
 // altitude/azimuth for an observer and time, and picks the constellation that
-// is best placed right now. Accurate to well under a degree, which is plenty
-// for drawing (precession since J2000 and refraction are ignored).
+// is best placed right now. Accurate to a few arcminutes (catalog positions are
+// precessed from J2000 to the date; nutation, aberration and refraction are ignored).
 //
 // Two coordinate systems are involved:
 //   Catalog (fixed on the sky, from constellations.ts)
@@ -95,6 +95,11 @@ export function altAz(ra: number, dec: number, obs: Observer, date: Date): { alt
 	// rad: multiply degrees by this to get radians (Math.sin/cos work in radians).
 	const rad = Math.PI / 180;
 
+	// The catalog's J2000 position, moved to the equator and equinox of the date.
+	const [px, py, pz] = precess(equatorialVector(ra, dec), date);
+	ra = Math.atan2(py, px) / rad / 15;
+	dec = Math.asin(Math.max(-1, Math.min(1, pz))) / rad;
+
 	// daysSinceJ2000: days (with fractions) since noon UTC on Jan 1, 2000, the
 	// reference moment for the GMST formula. getTime() is milliseconds since
 	// 1970; / 86400000 turns that into days; 2440587.5 is the Julian Day number
@@ -104,8 +109,11 @@ export function altAz(ra: number, dec: number, obs: Observer, date: Date): { alt
 	// gmst: Greenwich Mean Sidereal Time in degrees, i.e. which right ascension is
 	// due south at Greenwich right now. 280.46… is its value at J2000; 360.9856…
 	// is how far Earth turns against the stars per day (a bit more than 360°,
-	// since Earth also moves along its orbit). Not wrapped to 0-360: sin/cos don't mind.
-	const gmst = 280.46061837 + 360.98564736629 * daysSinceJ2000;
+	// since Earth also moves along its orbit). The T² and T³ terms (T in centuries)
+	// follow the equinox's slowly changing drift: about 0.04° by the year 1000 (Meeus eq. 12.4).
+	// Not wrapped to 0-360: sin/cos don't mind.
+	const T = daysSinceJ2000 / 36525;
+	const gmst = 280.46061837 + 360.98564736629 * daysSinceJ2000 + 0.000387933 * T * T - (T * T * T) / 38710000;
 
 	// hourAngle: how far the star has turned past the observer's north-south line
 	// (gmst + lon is the local sidereal time; ra * 15 converts hours to degrees).
@@ -138,9 +146,61 @@ export function altAz(ra: number, dec: number, obs: Observer, date: Date): { alt
  */
 export function siderealAngle(obs: Observer, date: Date): number {
 	const daysSinceJ2000 = date.getTime() / 86400000 + 2440587.5 - 2451545.0;
-	const gmst = 280.46061837 + 360.98564736629 * daysSinceJ2000; // degrees, as in altAz
+	const T = daysSinceJ2000 / 36525;
+	const gmst = 280.46061837 + 360.98564736629 * daysSinceJ2000 + 0.000387933 * T * T - (T * T * T) / 38710000; // degrees, as in altAz
 	return ((gmst + obs.lon) * Math.PI) / 180;
 }
+
+/**
+ * Precession: Earth's axis slowly wobbles (once around every 26,000 years), so the
+ * celestial poles and equinox creep against the stars, about 50″ a year (0.37° from
+ * 2000 to 2026). Catalog and ephemeris positions are for the J2000 equator and
+ * equinox; this rotation (row-major 3×3) turns them to the date's, which the
+ * sidereal time is measured from. IAU 1976 angles (Lieske 1979; Meeus ch. 21).
+ */
+export function precessionMatrix(date: Date): number[] {
+	const T = (date.getTime() / 86400000 + 2440587.5 - 2451545.0) / 36525; // Julian centuries since J2000
+	const arcsec = Math.PI / (180 * 3600);
+	const zeta = (2306.2181 * T + 0.30188 * T * T + 0.017998 * T ** 3) * arcsec;
+	const z = (2306.2181 * T + 1.09468 * T * T + 0.018203 * T ** 3) * arcsec;
+	const theta = (2004.3109 * T - 0.42665 * T * T - 0.041833 * T ** 3) * arcsec;
+	const [cZeta, sZeta, cz, sz, cTheta, sTheta] = [Math.cos(zeta), Math.sin(zeta), Math.cos(z), Math.sin(z), Math.cos(theta), Math.sin(theta)];
+	return [
+		cZeta * cz * cTheta - sZeta * sz, -sZeta * cz * cTheta - cZeta * sz, -cz * sTheta,
+		cZeta * sz * cTheta + sZeta * cz, -sZeta * sz * cTheta + cZeta * cz, -sz * sTheta,
+		cZeta * sTheta, -sZeta * sTheta, cTheta,
+	];
+}
+
+/** A J2000 equatorial vector turned to the equator and equinox of the date. */
+function precess(v: [number, number, number], date: Date): [number, number, number] {
+	const m = precessionMatrix(date);
+	return [0, 3, 6].map((i) => m[i] * v[0] + m[i + 1] * v[1] + m[i + 2] * v[2]) as [number, number, number];
+}
+
+/**
+ * A catalog star's J2000 position moved by its proper motion to a date (stars with
+ * no pm stay put). Moves along the sky in a straight line (a great circle), which
+ * holds for the few thousand years the sky view's clock goes.
+ */
+export function starAt(star: SkyStar, date: Date): { ra: number; dec: number } {
+	if (!star.pm) return star;
+	const years = (date.getTime() - J2000_MS) / (365.25 * 86400000);
+	const radPerMas = Math.PI / (180 * 3600 * 1000);
+	const [east, north] = star.pm.map((v) => v * radPerMas * years);
+	const a = (star.ra * 15 * Math.PI) / 180;
+	const d = (star.dec * Math.PI) / 180;
+	const [x, y, z] = equatorialVector(star.ra, star.dec);
+	// East and north on the sky at the star, in the same frame.
+	const moved = [x - east * Math.sin(a) - north * Math.sin(d) * Math.cos(a), y + east * Math.cos(a) - north * Math.sin(d) * Math.sin(a), z + north * Math.cos(d)];
+	const length = Math.hypot(...moved);
+	return {
+		ra: ((Math.atan2(moved[1], moved[0]) * 12) / Math.PI + 24) % 24,
+		dec: (Math.asin(moved[2] / length) * 180) / Math.PI,
+	};
+}
+
+const J2000_MS = Date.UTC(2000, 0, 1, 12);
 
 /** Unit vector on the celestial sphere: x toward RA 0h, y toward RA 6h, z toward the north celestial pole. */
 export function equatorialVector(ra: number, dec: number): [number, number, number] {
@@ -279,7 +339,10 @@ export function chooseSky(obs: Observer = observer, date = skyNow()): SkyChoice 
 	// placed: each constellation with its stars merged with their current alt/az.
 	const placed: PlacedConstellation[] = constellations.map((constellation) => ({
 		constellation,
-		stars: constellation.stars.map((s) => ({ ...s, ...altAz(s.ra, s.dec, obs, date) })),
+		stars: constellation.stars.map((s) => {
+			const at = starAt(s, date);
+			return { ...s, ...at, ...altAz(at.ra, at.dec, obs, date) };
+		}),
 	}));
 	// lowest: altitude of a constellation's lowest star. The featured one is the
 	// constellation that is entirely well above the horizon, not just partly.

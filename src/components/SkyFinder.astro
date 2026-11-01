@@ -571,7 +571,11 @@ const label = (deg: number) => {
 			const heading = (look.heading * 180) / Math.PI;
 			const width = compassWidth();
 			tape.style.transform = `translateX(${width / 2 - (heading + 180) * pxPerDegree}px)`;
-			const text = `${compassPoint(look.heading)} ${Math.round(heading) % 360}°`;
+			// The heading, then the view's tilt: the center's altitude, in the same words as
+			// search's "29° up in the east", for finding things in the real sky.
+			const tilt = Math.round((look.pitch * 180) / Math.PI);
+			const tiltText = tilt === 0 ? 'level' : `${Math.abs(tilt)}° ${tilt > 0 ? 'up' : 'down'}`;
+			const text = `${compassPoint(look.heading)} ${Math.round(heading) % 360}° · ${tiltText}`;
 			if (headingText.textContent !== text) headingText.textContent = text;
 			const obs = getObserver();
 			const now = skyNow();

@@ -1,0 +1,16 @@
+Copyright (c) 2026 Daniel Beyer. All rights reserved.
+
+The source code and content in this repository (the site's text, code, designs and
+personal material) may not be copied, modified, distributed or used without the
+author's written permission. Viewing the repository, and forking it on GitHub as
+GitHub's Terms of Service allow, is permitted.
+
+Exceptions: third-party material keeps its own license and is not covered by the
+notice above.
+
+- Images in public/sky/: each under the license named with its author and source in
+  src/data/skyImages.ts and on the site at /credits (CC BY, CC BY-SA, CC0 or public
+  domain).
+- Libraries installed from npm (three.js, GSAP, Astronomy Engine, Astro and their
+  dependencies): under their own licenses, listed in README.md and served with the
+  site at /licenses.txt.

@@ -58,6 +58,7 @@ h3 {
 
 /* Planet views on the home page (see PlanetExplorer): fade the regular page away. */
 .site-header,
+.site-footer,
 .home-content {
 	transition:
 		opacity 0.6s,
@@ -75,8 +76,10 @@ html:has(body[data-view='surface']) {
 }
 
 body[data-view='planet'] .site-header,
+body[data-view='planet'] .site-footer,
 body[data-view='planet'] .home-content,
 body[data-view='surface'] .site-header,
+body[data-view='surface'] .site-footer,
 body[data-view='surface'] .home-content {
 	opacity: 0;
 	transform: scale(0.98);
