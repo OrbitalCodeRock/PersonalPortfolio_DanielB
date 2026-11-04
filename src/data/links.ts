@@ -59,5 +59,5 @@ export const clubGames = [
 	{ title: 'GOBBOTRON: Neon Sins', genre: 'action', href: club('gobbotron') },
 	{ title: 'The Food Pyramid', genre: 'top-down shooter', href: club('the-food-pyramid') },
 	{ title: 'Puffer Putt', genre: 'pufferfish golf', href: club('puffer-putt') },
-	{ title: 'Fear of Flora', genre: 'action', href: club('fear-of-flora') },
+	{ title: 'Fear of Flora', genre: 'tower defense', href: club('fear-of-flora') },
 ];

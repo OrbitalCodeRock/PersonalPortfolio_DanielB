@@ -66,6 +66,7 @@
 .entry {
 	padding: 22px 24px;
 	scroll-margin-top: 24px;
+	container-type: inline-size;
 }
 .entry-head {
 	display: flex;
@@ -82,6 +83,14 @@
 	margin: 0;
 	color: var(--text-muted);
 	font-size: 0.9rem;
+}
+/* In narrow cards the date would sit beside short titles but wrap under long ones;
+   always put it on its own line there so every card in a grid matches. */
+@container (max-width: 480px) {
+	.entry-head {
+		flex-direction: column;
+		gap: 2px;
+	}
 }
 .entry-sub {
 	margin: 4px 0 0;
