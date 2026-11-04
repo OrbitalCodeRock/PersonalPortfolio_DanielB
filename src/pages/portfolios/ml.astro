@@ -1,5 +1,143 @@
 ---
-import PlaceholderPage from '../../layouts/PlaceholderPage.astro';
+import ContentPage from '../../layouts/ContentPage.astro';
+import Entry from '../../components/Entry.astro';
+import ChipGroups from '../../components/ChipGroups.astro';
+import { credentials, papers, profiles, quantumBlog, repos } from '../../data/links';
+
+const skills = [
+	{ label: 'Frameworks & libraries', items: ['PyTorch', 'TensorFlow', 'NumPy', 'Pandas'] },
+	{
+		label: 'ML workflow tools',
+		items: ['MLflow', 'Optuna', 'TensorBoard', 'Unity ML-Agents'],
+	},
+	{ label: 'Environments', items: ['Python', 'Jupyter Notebook', 'Google Colab'] },
+];
+
+// Each concept links to the project below that shows it.
+const concepts = [
+	{ label: 'Reinforcement learning', href: '#spider' },
+	{ label: 'Graph neural networks', href: '#upfd' },
+	{ label: 'Text encoders', href: '#upfd' },
+	{ label: 'Binary classification', href: '#upfd' },
+	{ label: 'Hyperparameter optimization', href: '#upfd' },
+	{ label: 'Experiment tracking and MLOps', href: '#upfd' },
+	{ label: 'Model training, validation and evaluation', href: '#upfd' },
+	{ label: 'Implementing published research', href: '#upfd' },
+];
 ---
 
-<PlaceholderPage title="Machine Learning" intro="My accolades and knowledge in machine learning." />
+<ContentPage
+	title="Machine Learning"
+	eyebrow="Portfolio"
+	intro="Research-driven machine learning work, from graph neural networks to reinforcement learning agents."
+>
+	<div class="prose">
+		<p>
+			During my B.S. in Computer Science, with a minor in mathematics, at Illinois State University, I worked on three
+			machine learning research projects with faculty. Each one meant learning a technique from the research literature and
+			building it myself. The projects covered graph neural networks for materials science and for detecting
+			misinformation, and reinforcement learning for a simulated agent.
+		</p>
+	</div>
+
+	<section class="content-section">
+		<h2>Skills</h2>
+		<ChipGroups groups={skills} />
+	</section>
+
+	<section class="content-section">
+		<h2>Concepts</h2>
+		<p class="section-intro">Each one links to the project that shows it.</p>
+		<ul class="jump-nav">
+			{
+				concepts.map((c) => (
+					<li>
+						<a href={c.href}>{c.label}</a>
+					</li>
+				))
+			}
+		</ul>
+	</section>
+
+	<section class="content-section">
+		<h2>Research projects</h2>
+		<div class="entry-list">
+			<Entry
+				id="upfd"
+				title="UPFD: Fake News Detection"
+				meta="Jan – May 2025"
+				subtitle="IT 299 Independent Honors Study, ISU"
+				tags={['PyTorch', 'Graph neural networks (GNNs)', 'MLflow', 'Optuna']}
+				links={[
+					{ label: 'Code', href: repos.upfd },
+					{ label: 'Paper', href: papers.upfd },
+				]}
+			>
+				<p>
+					Rebuilt the User Preference-Aware Fake News Detection model from a published research paper. It classifies news
+					tweets as factual or non-factual using graph neural networks and text encoders, drawing on both the tweet’s content
+					and the history of the users who shared it. Training, validation and tuning were automated with MLflow and Optuna.
+				</p>
+			</Entry>
+			<Entry
+				id="spider"
+				title="Reinforcement Learning: Virtual Spider Agent"
+				meta="Jan – May 2023"
+				subtitle="MAT 268 Undergraduate Research in Mathematics, ISU"
+				tags={['Reinforcement learning', 'Unity ML-Agents', 'C#']}
+				links={[{ label: 'Poster', href: papers.spiderPoster }]}
+			>
+				<p>
+					With Joseph Wittrock, trained a virtual spider agent in Unity to follow a moving target without falling over.
+					Presented the poster at the ISU Research Symposium.
+				</p>
+			</Entry>
+			<Entry id="stress" title="Predicting Stress Forces in Materials" subtitle="ISU faculty research" tags={['Graph neural networks (GNNs)', 'PyTorch']}>
+				<p>Used graph neural networks to predict stress forces in materials.</p>
+			</Entry>
+		</div>
+	</section>
+
+	<section class="content-section">
+		<h2>Related work</h2>
+		<div class="entry-list two-up">
+			<Entry title="Parallel Dijkstra’s Algorithm" subtitle="IT 388" links={[{ label: 'GitHub', href: repos.dijkstra }]}>
+				<p>MPI and OpenMP versions benchmarked on the Expanse supercomputer: high-performance computing experience.</p>
+			</Entry>
+			<Entry title="Simplicial Complex Graphing" links={[{ label: 'GitHub', href: repos.simplicial }]}>
+				<p>Graph theory and 3D rendering in Python.</p>
+			</Entry>
+			<Entry title="Representing Quantum Circuits" links={quantumBlog}>
+				<p>A three-part blog series covering the linear algebra behind quantum circuits.</p>
+			</Entry>
+		</div>
+	</section>
+
+	<section class="content-section">
+		<h2>Credentials</h2>
+		<div class="list-card card">
+			<ul class="plain-list">
+				<li>
+					Mathematics for Machine Learning Specialization (Imperial College London) ·{' '}
+					<a href={credentials.mathForMl} target="_blank" rel="noopener">Credential</a>
+				</li>
+				<li>
+					Python for Data Science, AI &amp; Development (IBM) ·{' '}
+					<a href={credentials.pythonDataScience} target="_blank" rel="noopener">Credential</a>
+				</li>
+				<li>
+					Tools for Data Science (IBM) ·{' '}
+					<a href={credentials.toolsDataScience} target="_blank" rel="noopener">Credential</a>
+				</li>
+			</ul>
+		</div>
+	</section>
+
+	<div class="cta card">
+		<p>Want to talk about ML?</p>
+		<ul class="jump-nav">
+			<li><a href={profiles.linkedin} target="_blank" rel="noopener">Contact me on LinkedIn</a></li>
+			<li><a href={profiles.github} target="_blank" rel="noopener">View code on GitHub</a></li>
+		</ul>
+	</div>
+</ContentPage>

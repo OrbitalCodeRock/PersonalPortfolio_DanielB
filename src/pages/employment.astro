@@ -1,5 +1,101 @@
 ---
-import PlaceholderPage from '../layouts/PlaceholderPage.astro';
+import ContentPage from '../layouts/ContentPage.astro';
+import Entry from '../components/Entry.astro';
 ---
 
-<PlaceholderPage title="Employment" intro="An accounting internship (ML design and development), a TA role at Northern Illinois University, Home Depot, and freelance web development." />
+<ContentPage title="Employment">
+	<div class="entry-list">
+		<Entry level={2} title="Full-Stack Engineer (Contract)" meta="Aug 2026 – Present" note="Client projects: details under NDA.">
+			<h4>Professional credentialing and verification platform</h4>
+			<ul>
+				<li>
+					Build and maintain the full stack of a national registry that verifies the credentials of professionals. The
+					frontend is plain JavaScript and Vite; the backend runs on Node.js with Firebase Cloud Functions, Firestore and
+					Cloud Storage.
+				</li>
+				<li>Built membership billing with Stripe, using webhooks to keep account status in sync with payments.</li>
+				<li>
+					Generate digital credential passes for Apple Wallet and Google Wallet, and built a public page where anyone can
+					verify a member’s status.
+				</li>
+				<li>
+					Connected third-party insurance-verification and background-check APIs. Members enter sensitive data on the
+					provider’s own pages, so the platform never stores it.
+				</li>
+				<li>
+					Built automated email and SMS reminders for expiring credentials, sent through scheduled functions at times suited
+					to each member’s time zone.
+				</li>
+				<li>
+					Set up CI/CD with GitHub Actions: unit, integration and Playwright end-to-end tests run against the Firebase
+					Emulator Suite. Production monitoring uses Google Cloud alerts and uptime checks.
+				</li>
+			</ul>
+			<h4>Multi-location medical wellness clinic</h4>
+			<ul>
+				<li>
+					Redesigning the clinic’s website, which is moving off a no-code builder (Framer). The redesign went through four
+					rounds of mockups, including a brand guide and a services hub.
+				</li>
+				<li>
+					Built a 15-page static site in HTML and CSS: clean URLs, separate pages for each location with embedded maps, a
+					membership page, and a searchable menu of 145 services.
+				</li>
+				<li>
+					Planned and implemented technical SEO: a unique title and description on every page, canonical and Open Graph
+					tags, structured data (JSON-LD) for the business, its locations and staff, its services and its FAQ, plus a sitemap
+					and robots.txt.
+				</li>
+				<li>
+					Wrote a map of permanent (301) redirects from the old site’s addresses, so the new site keeps the search rankings
+					the old pages earned.
+				</li>
+				<li>Deploy preview builds with Cloudflare Workers.</li>
+			</ul>
+		</Entry>
+
+		<Entry level={2} title="Merchandise Associate (part-time)" subtitle="The Home Depot" meta="Apr 2026 – Present">
+			<ul>
+				<li>
+					Keep store inventory accurate by updating price labels, restocking shelves from overhead stock, and returning
+					misplaced products to their correct locations.
+				</li>
+				<li>Find and handle damaged products to keep displays sellable.</li>
+				<li>Help customers find products and connect them with the right staff for specialized needs.</li>
+				<li>Set up seasonal displays.</li>
+			</ul>
+		</Entry>
+
+		<Entry
+			level={2}
+			title="Computer Science Teaching Assistant"
+			subtitle="Northern Illinois University · DeKalb, IL"
+			meta="Aug 2025 – Dec 2025"
+		>
+			<ul>
+				<li>
+					Graded C and C++ programming assignments for CSCI 480: Principles of Operating Systems, and gave students written
+					feedback on correctness and code quality.
+				</li>
+				<li>
+					Answered students’ questions about operating-systems concepts such as processes, scheduling, memory management and
+					concurrency.
+				</li>
+				<li>Worked 10–15 hours a week alongside PhD studies in computer science.</li>
+			</ul>
+		</Entry>
+
+		<Entry
+			level={2}
+			title="Accounting Intern (part-time)"
+			subtitle="ML Group Design + Development · Skokie, IL"
+			meta="Jun 2022 – Aug 2022"
+		>
+			<ul>
+				<li>Supported accounts payable and receivable by processing and recording invoices from companies and contractors.</li>
+				<li>Tracked and reconciled company credit-card purchases using Microsoft Excel and the company’s ERP system.</li>
+				<li>Worked with coworkers across different roles in a professional office environment.</li>
+			</ul>
+		</Entry>
+	</div>
+</ContentPage>

@@ -1,5 +1,227 @@
 ---
-import PlaceholderPage from '../layouts/PlaceholderPage.astro';
+import ContentPage from '../layouts/ContentPage.astro';
+import Entry from '../components/Entry.astro';
+import { clubGames, games, papers, profiles, quantumBlog, repos } from '../data/links';
+
+const categories = [
+	{ id: 'ml', title: 'Machine Learning & Research' },
+	{ id: 'systems', title: 'Systems & Algorithms' },
+	{ id: 'web', title: 'Web Development' },
+	{ id: 'games', title: 'Game Development' },
+	{ id: 'old', title: 'Old Projects' },
+];
+const NDA_NOTE = 'Private client project — available to discuss in interviews.';
 ---
 
-<PlaceholderPage title="Projects" intro="Python, C#, web development, machine learning, and Unity Engine projects." />
+<ContentPage title="Projects" intro="Things I’ve built, by category. Code is on GitHub and games are on itch.io where I can share them.">
+	<ul class="jump-nav" slot="head">
+		{
+			categories.map((c) => (
+				<li>
+					<a href={`#${c.id}`}>{c.title}</a>
+				</li>
+			))
+		}
+	</ul>
+
+	<section class="content-section" id="ml">
+		<h2>Machine Learning &amp; Research</h2>
+		<div class="entry-list">
+			<Entry
+				title="UPFD: Fake News Detection with MLflow and Optuna"
+				meta="Jan – May 2025"
+				subtitle="IT 299: Independent Honors Study, ISU"
+				tags={['Python', 'PyTorch', 'Graph neural networks (GNNs)', 'MLflow', 'Optuna']}
+				links={[
+					{ label: 'GitHub', href: repos.upfd },
+					{ label: 'Paper', href: papers.upfd },
+				]}
+			>
+				<p>
+					Rebuilt the User Preference-Aware Fake News Detection model from a published research paper. It combines graph
+					neural networks with text encoders to classify news tweets as factual or non-factual, using both the tweet’s
+					content and the history of the users who reposted it. Training, validation and hyperparameter tuning were
+					automated with MLflow and Optuna.
+				</p>
+			</Entry>
+			<Entry
+				title="Reinforcement Learning: Virtual Spider Agent"
+				meta="Jan – May 2023"
+				subtitle="MAT 268: Undergraduate Research in Mathematics, ISU"
+				tags={['Unity Engine', 'Unity ML-Agents', 'C#', 'Reinforcement learning']}
+				links={[{ label: 'Poster', href: papers.spiderPoster }]}
+			>
+				<p>
+					With Joseph Wittrock, trained a virtual spider agent in Unity to follow a moving target without falling over.
+					Presented the poster at the ISU Research Symposium.
+				</p>
+			</Entry>
+		</div>
+	</section>
+
+	<section class="content-section" id="systems">
+		<h2>Systems &amp; Algorithms</h2>
+		<div class="entry-list">
+			<Entry
+				title="Parallel Dijkstra’s Algorithm"
+				meta="Apr – May 2025"
+				subtitle="IT 388, ISU (team of 5)"
+				tags={['C++', 'MPI', 'OpenMP', 'HPC job scripting']}
+				links={[{ label: 'GitHub', href: repos.dijkstra }]}
+			>
+				<p>
+					Implemented the parallel shortest-path algorithm from a published research paper in three versions: sequential,
+					OpenMP and MPI. Built a random connected-graph generator and a test harness that checks the results and compares
+					run times. Ran the experiments on the Expanse supercomputer with batch job scripts.
+				</p>
+			</Entry>
+			<Entry
+				title="Simplicial Complex Graphing"
+				meta="Apr 2023"
+				tags={['Python', 'Mayavi']}
+				links={[{ label: 'GitHub', href: repos.simplicial }]}
+			>
+				<p>
+					A Python program for experimenting with simplicial complexes, graph theory and 3D rendering. Completed as part of
+					an Honors Learning Experience in Papa Sissokho’s Discrete Mathematics class.
+				</p>
+			</Entry>
+			<Entry title="Command-Line Math Game in Go" meta="Dec 2024" tags={['Go']} links={[{ label: 'GitHub', href: repos.goMath }]}>
+				<p>A simple math game you play from the command line, built while learning Go.</p>
+			</Entry>
+		</div>
+	</section>
+
+	<section class="content-section" id="web">
+		<h2>Web Development</h2>
+		<div class="entry-list">
+			<!-- Client work under NDA: kept general on purpose (no client names, sizes or internals). -->
+			<Entry
+				title="Credentialing & Verification Platform"
+				meta="Aug 2026 – Present"
+				subtitle="Contract · Full-stack engineering"
+				tags={['JavaScript', 'Node.js', 'Cloud Functions', 'Firestore', 'Stripe', 'GitHub Actions', 'Playwright']}
+				note={NDA_NOTE}
+			>
+				<p>
+					A web platform that verifies the credentials of professionals, with membership billing, digital wallet passes, a
+					public verification page and automated reminders. Every change is tested and deployed automatically.
+				</p>
+			</Entry>
+			<Entry
+				title="Clinic Website Redesign"
+				meta="Oct 2026 – Present"
+				subtitle="Contract · Web development"
+				tags={['HTML', 'CSS', 'SEO', 'Cloudflare Workers']}
+				note={NDA_NOTE}
+			>
+				<p>
+					A redesign that moves a multi-location clinic’s website off a no-code builder, onto fast static pages built with
+					search engine optimization in mind.
+				</p>
+			</Entry>
+			<Entry
+				title="Personal Portfolio"
+				meta="Oct 2026 – Present"
+				tags={['Astro', 'TypeScript', 'GSAP', 'Three.js']}
+				links={[{ label: 'GitHub', href: repos.portfolio }]}
+			>
+				<p>This portfolio site.</p>
+				<!-- A nudge toward the sky view easter egg on the home page, without naming it. -->
+				<p class="entry-note">
+					Psst: open the eye on <a href="/">the home page</a>, give the planet a spin, and look for the one gold thing
+					that isn’t a page.
+				</p>
+			</Entry>
+		</div>
+	</section>
+
+	<section class="content-section" id="games">
+		<h2>Game Development</h2>
+		<h3 class="group">Solo and jam games (published on itch.io)</h3>
+		<div class="entry-list two-up">
+			<Entry
+				title="The World Tends Toward Chaos"
+				subtitle="Brackeys Game Jam 2021.2"
+				tags={['Unity Engine', 'C#']}
+				links={[
+					{ label: 'Play', href: games.chaos },
+					{ label: 'GitHub', href: repos.chaos },
+				]}
+			>
+				<p>An action game in which you survive an endless onslaught of angry 2D polygons.</p>
+			</Entry>
+		</div>
+
+		<h3 class="group">ISU Game Development Club</h3>
+		<div class="entry-list">
+			<div class="list-card card">
+				<ul class="plain-list">
+					{
+						[
+							{ title: 'Thylla and The Old Gods', genre: 'Lovecraftian horror puzzle', href: games.thylla },
+							...clubGames,
+						].map((g) => (
+							<li>
+								<a href={g.href} target="_blank" rel="noopener">
+									{g.title}
+								</a>
+								<span class="muted"> · {g.genre}</span>
+							</li>
+						))
+					}
+				</ul>
+			</div>
+		</div>
+	</section>
+
+	<section class="content-section" id="old">
+		<h2>Old Projects</h2>
+		<p class="section-intro">
+			Early projects from my first blog, <a href={profiles.blog} target="_blank" rel="noopener">Schedule, Learn, Program</a>,
+			and GitHub, made in high school and right after.
+		</p>
+		<div class="entry-list two-up">
+			<Entry title="Chess Game" meta="2020" tags={['Python', 'Pygame']} links={[{ label: 'GitHub', href: repos.chess }]}>
+				<p>
+					An offline two-player chess game. Clicking a piece highlights its legal moves, and calculating those moves was the
+					main challenge.
+				</p>
+			</Entry>
+			<Entry
+				title="Double Pendulum Simulation"
+				meta="Apr 2021"
+				tags={['Python', 'Pygame']}
+				links={[{ label: 'GitHub', href: repos.doublePendulum }]}
+			>
+				<p>A simulation of chaotic double-pendulum motion.</p>
+			</Entry>
+			<Entry title="Representing Quantum Circuits" meta="Apr 2021" tags={['Jupyter Notebook', 'IBM Quantum Lab']} links={quantumBlog}>
+				<p>A three-part blog series and Jupyter notebook covering vectors, matrices, qubit states and tensors.</p>
+			</Entry>
+			<Entry title="Flight Simulator" tags={['Unity Engine', 'Blender']}>
+				<p>A biplane with lift, drag and thrust physics that can take off and maneuver like a real plane.</p>
+			</Entry>
+			<Entry title="2D Fighting Game" tags={['Unity Engine', 'C#']} links={[{ label: 'GitHub', href: repos.fighting }]}>
+				<p>
+					A stick-figure fighter with character and map selection, plus smooth blending between move, crouch, jump and punch
+					animations.
+				</p>
+			</Entry>
+			<Entry title="2D Open-World Game" tags={['Unity Engine', 'C#']} links={[{ label: 'GitHub', href: repos.openWorld }]}>
+				<p>
+					One of my first Unity projects: a top-down exploration game with a survival mode for testing combat and enemies
+					that react to the player.
+				</p>
+			</Entry>
+			<Entry
+				title="Shadow Bots Mod"
+				meta="High school"
+				tags={['Unity Engine', 'C#']}
+				links={[{ label: 'GitHub', href: repos.shadowBots }]}
+			>
+				<p>A mod of the game Shadow Bots, made in a high school game design class. My first Unity project.</p>
+			</Entry>
+		</div>
+	</section>
+</ContentPage>

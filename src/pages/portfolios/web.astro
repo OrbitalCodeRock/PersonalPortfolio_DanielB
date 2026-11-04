@@ -1,5 +1,130 @@
 ---
-import PlaceholderPage from '../../layouts/PlaceholderPage.astro';
+import ContentPage from '../../layouts/ContentPage.astro';
+import Entry from '../../components/Entry.astro';
+import ChipGroups from '../../components/ChipGroups.astro';
+import { credentials, profiles, repos } from '../../data/links';
+
+const skills = [
+	{ label: 'Frontend', items: ['HTML', 'CSS', 'JavaScript', 'TypeScript', 'Vue.js', 'Astro', 'Vite', 'GSAP', 'Three.js'] },
+	{
+		label: 'Backend & cloud',
+		items: ['Node.js', 'Firebase Auth', 'Cloud Functions', 'Firestore', 'Cloud Storage', 'PHP', 'Java', 'SQL', 'NoSQL'],
+	},
+	{
+		label: 'CI/CD & DevOps',
+		items: ['GitHub Actions', 'Firebase Hosting', 'Cloudflare Workers', 'Google Cloud Monitoring', 'Google Cloud Logging', 'Google Cloud Secret Manager'],
+	},
+	{ label: 'APIs & integrations', items: ['Stripe', 'Apple Wallet', 'Google Wallet', 'Twilio SendGrid & SMS', 'Google Maps'] },
+	{ label: 'Testing', items: ['Playwright', 'Firebase Emulator Suite', 'Unit and integration testing'] },
+	{ label: 'Design', items: ['Figma'] },
+];
+const NDA_NOTE = 'Private client project — available to discuss in interviews.';
 ---
 
-<PlaceholderPage title="Web Development" intro="My accolades and knowledge in web development, and the sites I have worked on." />
+<ContentPage
+	title="Web Development"
+	eyebrow="Portfolio"
+	intro="Full-stack websites and web apps, from the first mockup to a monitored production deployment."
+>
+	<div class="prose">
+		<p>
+			I build complete web applications, both frontend and backend. Right now I work as a contract full-stack engineer on
+			two client projects. One is a national credentialing platform with payments, digital wallet passes and automated
+			testing and deployment. The other is a website redesign for a multi-location medical clinic, with a focus on search
+			engine optimization.
+		</p>
+	</div>
+
+	<section class="content-section">
+		<h2>Skills</h2>
+		<ChipGroups groups={skills} />
+	</section>
+
+	<section class="content-section">
+		<h2>Featured work</h2>
+		<p class="section-intro">Client project details are under NDA.</p>
+		<div class="entry-list">
+			<Entry
+				title="National Credentialing & Verification Platform"
+				subtitle="Contract Full-Stack Engineer"
+				meta="Aug 2026 – Present"
+				tags={['Cloud Functions', 'Firestore', 'Node.js', 'Stripe', 'Apple Wallet', 'Google Wallet', 'GitHub Actions', 'Playwright']}
+				note={NDA_NOTE}
+			>
+				<p>A national registry that verifies the credentials of fitness professionals.</p>
+				<ul>
+					<li>
+						Built the full stack: the frontend in plain JavaScript and Vite, and a backend made of ten Firebase Cloud
+						Functions codebases.
+					</li>
+					<li>Built membership billing with Stripe, using webhooks to keep account status in sync with payments.</li>
+					<li>
+						Created digital credential passes for Apple Wallet and Google Wallet, plus a public page where anyone can verify a
+						member.
+					</li>
+					<li>Built automated email and SMS reminders on scheduled functions, timed to each member’s time zone.</li>
+					<li>
+						Set up CI/CD with GitHub Actions running unit, integration and Playwright end-to-end tests, and production
+						monitoring with alerts and uptime checks.
+					</li>
+				</ul>
+			</Entry>
+			<Entry
+				title="Medical Clinic Website Redesign"
+				subtitle="Contract Web Developer"
+				meta="Oct 2026 – Present"
+				tags={['HTML', 'CSS', 'SEO', 'Cloudflare Workers']}
+				note={NDA_NOTE}
+			>
+				<p>A redesign that moves a multi-location wellness clinic off a no-code website builder.</p>
+				<ul>
+					<li>Developed the design through four rounds of mockups, including a brand guide and a services hub.</li>
+					<li>
+						Built a 15-page static site with clean URLs, a page for each location with an embedded map, and a searchable menu
+						of 145 services.
+					</li>
+					<li>
+						Implemented technical SEO: titles and descriptions written for each page, structured data (JSON-LD) and a
+						sitemap.
+					</li>
+					<li>
+						Planned permanent (301) redirects from the old site’s addresses so the clinic keeps its existing search rankings.
+					</li>
+				</ul>
+			</Entry>
+			<Entry
+				title="Personal Portfolio"
+				subtitle="This site"
+				meta="Oct 2026 – Present"
+				tags={['Astro', 'TypeScript', 'GSAP', 'Three.js']}
+				links={[{ label: 'GitHub', href: repos.portfolio }]}
+			/>
+		</div>
+	</section>
+
+	<section class="content-section">
+		<h2>Education &amp; credentials</h2>
+		<div class="list-card card">
+			<ul class="plain-list">
+				<li>
+					<a href="/education">B.S. in Computer Science, Illinois State University</a> (2025): three web development courses
+					with semester-long projects (IT 326, IT 353 and IT 391)
+				</li>
+				<li>
+					Coursera:{' '}
+					<a href={credentials.django} target="_blank" rel="noopener">Building Web Applications in Django</a> and{' '}
+					<a href={credentials.djangoFeatures} target="_blank" rel="noopener">Django Features and Libraries</a> (University of
+					Michigan)
+				</li>
+			</ul>
+		</div>
+	</section>
+
+	<div class="cta card">
+		<p>Interested in working together?</p>
+		<ul class="jump-nav">
+			<li><a href={profiles.linkedin} target="_blank" rel="noopener">Contact me on LinkedIn</a></li>
+			<li><a href={profiles.github} target="_blank" rel="noopener">View my GitHub</a></li>
+		</ul>
+	</div>
+</ContentPage>

@@ -1,5 +1,37 @@
 ---
-import PlaceholderPage from '../layouts/PlaceholderPage.astro';
+import ContentPage from '../layouts/ContentPage.astro';
+import Entry from '../components/Entry.astro';
+import { repos } from '../data/links';
 ---
 
-<PlaceholderPage title="Now" intro="What I am up to at the moment." />
+<ContentPage title="Now" intro="What I’m up to at the moment.">
+	<p class="updated" slot="head">Last updated: <time datetime="2026-11">November 2026</time></p>
+
+	<div class="entry-list">
+		<Entry title="Building this website" links={[{ label: 'Source on GitHub', href: repos.portfolio }]}>
+			<p>
+				You’re looking at it. It’s built with Astro, GSAP and Three.js, which is a lot of animation power for a site that
+				mostly says “hire me.” It’s never quite finished, but it’s always shipping.
+			</p>
+			<!-- A nudge toward the sky view easter egg on the home page, without naming it (same as on Projects). -->
+			<p class="entry-note">
+				Psst: open the eye on <a href="/">the home page</a>, give the planet a spin, and look for the one gold thing that
+				isn’t a page.
+			</p>
+		</Entry>
+		<Entry title="A national credentialing platform">
+			<p>
+				I’m the full-stack engineer on a platform that verifies the credentials of fitness professionals. It handles
+				payments, digital wallet passes, automated reminders and a test suite that runs on every pull request. I’d tell you
+				more, but there’s an NDA, and I’d like to stay employed.
+			</p>
+		</Entry>
+		<Entry title="A medical clinic website">
+			<p>
+				I’m redesigning the website for a multi-location wellness clinic and moving it off a no-code builder. That means 15
+				pages, 145 services and a lot of SEO. I can’t name the client, but I can tell you their website will be much faster
+				soon.
+			</p>
+		</Entry>
+	</div>
+</ContentPage>

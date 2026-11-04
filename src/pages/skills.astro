@@ -1,5 +1,110 @@
 ---
-import PlaceholderPage from '../layouts/PlaceholderPage.astro';
+import ContentPage from '../layouts/ContentPage.astro';
+import ChipGroups from '../components/ChipGroups.astro';
+
+const groups = [
+	{ label: 'Languages', items: ['C#', 'Java', 'C', 'C++', 'Python', 'JavaScript', 'TypeScript', 'HTML', 'CSS', 'PHP', 'Go'] },
+	{
+		label: 'Frameworks & libraries',
+		items: [
+			'NumPy',
+			'Pandas',
+			'PyTorch',
+			'TensorFlow',
+			'TensorBoard',
+			'MLflow',
+			'Optuna',
+			'Unity ML-Agents',
+			'Vue.js',
+			'Vite',
+			'Astro',
+			'GSAP',
+			'Three.js',
+			'Node.js',
+			'Django',
+			'.NET',
+			'Pygame',
+			'Mayavi',
+			'MPI',
+			'OpenMP',
+			'HPC job scripting',
+			'HLSL',
+			'Bash / shell scripting',
+		],
+	},
+	{ label: 'Cloud & backend', items: ['Firebase Auth', 'Cloud Functions', 'Firestore', 'Cloud Storage'] },
+	{
+		label: 'CI/CD & DevOps',
+		items: [
+			'GitHub Actions',
+			'Firebase Hosting',
+			'Firebase CLI & Emulators',
+			'Google Cloud CLI (gcloud)',
+			'Google Cloud Monitoring',
+			'Google Cloud Logging',
+			'Google Cloud Secret Manager',
+			'Cloudflare Workers',
+		],
+	},
+	{
+		label: 'APIs & integrations',
+		items: ['Stripe', 'Apple Wallet', 'Google Wallet', 'Twilio SendGrid & SMS', 'Segment', 'Google Maps', 'hCaptcha'],
+	},
+	{ label: 'Databases', items: ['Firestore', 'MySQL', 'SQL', 'NoSQL', 'Document-based', 'In-memory', 'Cloud-based'] },
+	{ label: 'Testing', items: ['JUnit', 'xUnit.net', 'Playwright', 'Firebase Emulator Suite', 'Unit and integration testing'] },
+	{ label: 'Web', items: ['SEO'] },
+	{ label: 'Developer tools', items: ['Git', 'GitHub', 'Chrome DevTools', 'Figma', 'Blender'] },
+	{
+		label: 'Development environments',
+		items: [
+			'Visual Studio Code',
+			'Visual Studio',
+			'JetBrains IDEs',
+			'PyCharm',
+			'Eclipse',
+			'JupyterLab',
+			'Jupyter Notebook',
+			'Google Colab',
+			'Unity Engine',
+			'IBM Quantum Lab',
+		],
+	},
+	{
+		label: 'Planning & organization',
+		items: ['Figma', 'Google Docs', 'Google Sheets', 'Google Drive', 'Microsoft 365', 'Excel', 'Word', 'Visio'],
+	},
+	{
+		label: 'Game development',
+		items: [
+			'Physics-based character controllers',
+			'AI-driven agents',
+			'Real-time strategy mechanics',
+			'Animation state machines',
+			'Running game jams',
+			'Project leadership',
+			'Presenting',
+		],
+	},
+	{ label: 'Operating systems', items: ['Windows', 'Linux'] },
+	{
+		label: 'Machine learning concepts',
+		items: [
+			'Reinforcement learning',
+			'Graph neural networks (GNNs)',
+			'Convolutional neural networks (CNNs)',
+			'Text encoders',
+			'Text embeddings',
+			'Binary classification',
+			'Hyperparameter optimization',
+			'Workflow automation',
+			'Model training',
+			'Model validation',
+			'Model evaluation',
+		],
+	},
+];
 ---
 
-<PlaceholderPage title="Skills" intro="My skills, organized by category." />
+<ContentPage title="Skills" intro="What I know, by category.">
+	<ChipGroups groups={groups} />
+</ContentPage>

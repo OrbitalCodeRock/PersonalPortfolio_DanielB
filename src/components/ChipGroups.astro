@@ -1,0 +1,28 @@
+---
+// Labelled groups of chips: the skills page and the portfolio skill strips.
+export interface ChipGroup {
+	label: string;
+	items: string[];
+}
+
+interface Props {
+	groups: ChipGroup[];
+}
+
+const { groups } = Astro.props;
+---
+
+<div class="chip-groups">
+	{
+		groups.map((g) => (
+			<section class="chip-group card">
+				<h3>{g.label}</h3>
+				<ul class="tags">
+					{g.items.map((item) => (
+						<li>{item}</li>
+					))}
+				</ul>
+			</section>
+		))
+	}
+</div>

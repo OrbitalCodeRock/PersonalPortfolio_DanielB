@@ -1,5 +1,183 @@
 ---
-import PlaceholderPage from '../layouts/PlaceholderPage.astro';
+import ContentPage from '../layouts/ContentPage.astro';
+
+// Newest first. `when` is the month or season; empty when the doc gives none.
+const years: { year: string; events: { when: string; text: string }[] }[] = [
+	{
+		year: '2026',
+		events: [
+			{ when: 'Oct', text: 'Started building this portfolio site with Astro, GSAP and Three.js.' },
+			{ when: 'Oct', text: 'Began a website redesign for a multi-location medical clinic as a contract web developer.' },
+			{ when: 'Aug', text: 'Started as a contract full-stack engineer on a national credentialing platform.' },
+			{ when: 'Apr', text: 'Joined The Home Depot as a part-time merchandise associate.' },
+		],
+	},
+	{
+		year: '2025',
+		events: [
+			{
+				when: 'Aug – Dec',
+				text: 'Worked as a Computer Science Teaching Assistant for CSCI 480 (Principles of Operating Systems) at Northern Illinois University, while a PhD student there.',
+			},
+			{
+				when: 'May',
+				text: 'Graduated from Illinois State University with a B.S. in Computer Science and a minor in Mathematics.',
+			},
+			{
+				when: 'Spring',
+				text: 'Built a parallel version of Dijkstra’s algorithm with MPI and OpenMP (IT 388).',
+			},
+			{
+				when: 'Jan – May',
+				text: 'Rebuilt the UPFD fake-news detection model with MLflow and Optuna (IT 299 Independent Honors Study).',
+			},
+		],
+	},
+	{
+		year: '2024',
+		events: [
+			{ when: 'Dec', text: 'Learned Go and built a command-line math game.' },
+			{ when: 'Mar', text: 'Worked on the NPC Reduction group project (IT 328).' },
+		],
+	},
+	{
+		year: '2023',
+		events: [
+			{ when: 'May – Jul', text: 'Made a game for the ISU Summer Jam.' },
+			{ when: 'Apr', text: 'Built a simplicial complex graphing tool in Python.' },
+			{
+				when: 'Jan – May',
+				text: 'Trained a reinforcement learning spider agent in Unity (MAT 268) and presented it at the ISU Research Symposium.',
+			},
+		],
+	},
+	{
+		year: '2022',
+		events: [
+			{ when: 'Dec', text: 'Started work on a real-time strategy base-building game.' },
+			{ when: 'Jun – Aug', text: 'Worked as an accounting intern at ML Group Design + Development.' },
+			{ when: 'Jun', text: 'Earned the Unity Certified Associate: Game Developer certification.' },
+			{ when: 'May', text: 'Started the Stored Momentum 2D platformer template.' },
+		],
+	},
+	{
+		year: '2021',
+		events: [
+			{
+				when: 'Fall',
+				text: 'Worked on Thylla and The Old Gods, the ISU Game Development Club’s semester challenge project.',
+			},
+			{
+				when: 'Aug',
+				text: 'Started at Illinois State University, and entered Brackeys Game Jam 2021.2 with The World Tends Toward Chaos.',
+			},
+			{ when: 'May', text: 'Completed Django Features and Libraries and Introduction to Quantum Computing.' },
+			{
+				when: 'Apr',
+				text: 'Published the three-part “Representing Quantum Circuits” blog series, built a double pendulum simulation, and completed Python for Data Science, AI & Development.',
+			},
+			{ when: 'Feb', text: 'Completed the Mathematics for Machine Learning specialization.' },
+		],
+	},
+	{
+		year: '2020',
+		events: [
+			{ when: 'Dec', text: 'Completed Tools for Data Science, Building Web Applications in Django and Graphic Design.' },
+			{ when: 'Nov', text: 'Completed Business Writing.' },
+			{ when: 'Oct', text: 'Started my blog, Schedule, Learn, Program.' },
+			{ when: 'Summer', text: 'Built a chess game in Python and Pygame.' },
+			{ when: '', text: 'Graduated from Glenbrook South High School.' },
+		],
+	},
+	{
+		year: '2016 – 2020 · High school',
+		events: [
+			{ when: '~2019', text: 'Started a 2D fighting game, a top-down open-world game and a flight simulator in Unity.' },
+			{ when: '2018', text: 'Built my first Unity project, a mod of Shadow Bots, in a game design class.' },
+		],
+	},
+];
 ---
 
-<PlaceholderPage title="Timeline" intro="Events in my life, in chronological order." />
+<ContentPage title="Timeline" intro="My story so far, newest first.">
+	<ol class="timeline">
+		{
+			years.map((y) => (
+				<li class="timeline-year">
+					<h2>{y.year}</h2>
+					<ol>
+						{y.events.map((e) => (
+							<li>
+								<span class="when">{e.when}</span>
+								<span class="what">{e.text}</span>
+							</li>
+						))}
+					</ol>
+				</li>
+			))
+		}
+	</ol>
+</ContentPage>
+
+<style>
+	/* A glowing vertical line with a node at each year. */
+	.timeline {
+		list-style: none;
+		margin: 40px 0 0;
+		padding: 0 0 0 28px;
+		position: relative;
+		max-width: 820px;
+	}
+	.timeline::before {
+		content: '';
+		position: absolute;
+		left: 6px;
+		top: 8px;
+		bottom: 8px;
+		width: 2px;
+		background: linear-gradient(var(--accent), var(--accent-2) 60%, transparent);
+		opacity: 0.6;
+	}
+	.timeline-year {
+		position: relative;
+		margin-bottom: 36px;
+	}
+	.timeline-year::before {
+		content: '';
+		position: absolute;
+		left: -28px;
+		top: 0.45em;
+		width: 14px;
+		height: 14px;
+		border-radius: 50%;
+		background: var(--bg);
+		border: 2px solid var(--accent);
+		box-shadow: 0 0 12px rgba(111, 182, 255, 0.6);
+	}
+	h2 {
+		margin: 0 0 12px;
+		font-size: 1.4rem;
+	}
+	.timeline-year ol {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: grid;
+		gap: 10px;
+	}
+	.timeline-year ol li {
+		display: grid;
+		grid-template-columns: 96px 1fr;
+		gap: 4px 16px;
+	}
+	.when {
+		color: var(--accent);
+		font-size: 0.9rem;
+		padding-top: 0.1em;
+	}
+	@media (max-width: 560px) {
+		.timeline-year ol li {
+			grid-template-columns: 1fr;
+		}
+	}
+</style>

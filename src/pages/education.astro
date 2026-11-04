@@ -1,5 +1,72 @@
 ---
-import PlaceholderPage from '../layouts/PlaceholderPage.astro';
+import ContentPage from '../layouts/ContentPage.astro';
+import Entry from '../components/Entry.astro';
+import { papers, repos } from '../data/links';
 ---
 
-<PlaceholderPage title="Education" intro="My educational achievements and journey: Glenbrook South High School, Illinois State University (B.S. in Computer Science, Game Development Club, ACM Club), and a semester of a PhD program at Northern Illinois University." />
+<ContentPage title="Education">
+	<div class="entry-list">
+		<Entry
+			level={2}
+			title="Illinois State University"
+			meta="Normal, IL · Aug 2021 – May 2025"
+			subtitle="B.S. in Computer Science, Minor in Mathematics"
+			tags={['Java', 'C', 'C++', 'Python', 'HTML', 'CSS', 'JavaScript', 'PHP']}
+		>
+			<p>
+				<strong>Web development coursework:</strong> completed three semester-long web development projects (IT 326, IT 353
+				and IT 391) using HTML, CSS, JavaScript, PHP, Vue.js, Java, SQL, NoSQL, Firebase and Figma.
+			</p>
+			<p class="muted">Languages from my coursework:</p>
+		</Entry>
+	</div>
+
+	<section class="content-section">
+		<h2>Machine learning research</h2>
+		<p class="section-intro">Three projects with ISU faculty.</p>
+		<div class="entry-list">
+			<Entry title="Predicting stress forces in materials" tags={['Graph neural networks (GNNs)']}>
+				<p>Used graph neural networks (GNNs) to model stress forces.</p>
+			</Entry>
+			<Entry
+				title="Fake news detection (UPFD)"
+				subtitle="IT 299: Independent Honors Study"
+				tags={['Graph neural networks (GNNs)', 'Text encoders', 'MLflow', 'Optuna']}
+				links={[
+					{ label: 'Code', href: repos.upfd },
+					{ label: 'Paper', href: papers.upfd },
+				]}
+			>
+				<p>
+					Rebuilt a published research model that uses GNNs and text encoders to classify news as factual or non-factual.
+					Training and tuning were automated with MLflow and Optuna.
+				</p>
+			</Entry>
+			<Entry
+				title="Virtual spider agent"
+				subtitle="MAT 268: Undergraduate Research in Mathematics"
+				tags={['Reinforcement learning', 'Unity ML-Agents']}
+				links={[{ label: 'Poster', href: papers.spiderPoster }]}
+			>
+				<p>
+					Trained a reinforcement learning agent in Unity with ML-Agents to follow a moving target, and presented the results
+					at the ISU Research Symposium.
+				</p>
+			</Entry>
+		</div>
+	</section>
+
+	<section class="content-section">
+		<h2>Leadership &amp; activities</h2>
+		<div class="list-card card">
+			<ul class="plain-list">
+				<li>
+					<strong>Game Development Club:</strong> ran meetings and made project-wide decisions for a club of 20+ active members,
+					building games in C# and Unity with GitHub.
+				</li>
+				<li><strong>Association for Computing Machinery (ACM):</strong> gave presentations at club events.</li>
+				<li>Kept both commitments going while taking six classes a semester during the final two semesters.</li>
+			</ul>
+		</div>
+	</section>
+</ContentPage>

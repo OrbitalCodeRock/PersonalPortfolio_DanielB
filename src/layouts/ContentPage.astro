@@ -1,0 +1,42 @@
+---
+// Layout for the content pages: a page heading, then whatever the page puts in its
+// slot. Shared styles for sections, Entry cards and chips are in content.css.
+import BaseLayout from './BaseLayout.astro';
+import '../styles/content.css';
+
+interface Props {
+	title: string;
+	intro?: string;
+	eyebrow?: string;
+	description?: string;
+}
+
+const { title, intro, eyebrow, description } = Astro.props;
+---
+
+<BaseLayout title={title} description={description ?? intro}>
+	<header class="page-head">
+		{eyebrow && <p class="eyebrow">{eyebrow}</p>}
+		<h1>{title}</h1>
+		{intro && <p class="intro">{intro}</p>}
+		<slot name="head" />
+	</header>
+	<slot />
+</BaseLayout>
+
+<script>
+	import { gsap } from 'gsap';
+
+	// Same entrance as the hub cards (HubGrid): re-run on every client-side navigation.
+	document.addEventListener('astro:page-load', () => {
+		if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+		const items = document.querySelectorAll('.entry, .chip-group, .list-card, .timeline-year');
+		if (!items.length) return;
+		gsap.killTweensOf(items);
+		gsap.fromTo(
+			items,
+			{ opacity: 0, y: 20 },
+			{ opacity: 1, y: 0, duration: 0.55, stagger: 0.04, ease: 'power3.out', clearProps: 'opacity,transform' },
+		);
+	});
+</script>

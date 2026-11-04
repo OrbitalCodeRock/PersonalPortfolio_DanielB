@@ -1,5 +1,117 @@
 ---
-import PlaceholderPage from '../layouts/PlaceholderPage.astro';
+import ContentPage from '../layouts/ContentPage.astro';
+import Entry from '../components/Entry.astro';
+import { credentials } from '../data/links';
+
+const groups = [
+	{
+		title: 'Machine Learning & Data Science',
+		certs: [
+			{
+				title: 'Mathematics for Machine Learning Specialization',
+				issuer: 'Coursera (Imperial College London)',
+				date: 'Feb 2021',
+				about: 'Linear algebra, multivariate calculus and principal component analysis: the math behind how ML models train and optimize.',
+				href: credentials.mathForMl,
+			},
+			{
+				title: 'Python for Data Science, AI & Development',
+				issuer: 'Coursera (IBM)',
+				date: 'Apr 2021',
+				about: 'Python fundamentals for data work, including data structures, Pandas and NumPy, APIs, and web scraping.',
+				href: credentials.pythonDataScience,
+			},
+			{
+				title: 'Tools for Data Science',
+				issuer: 'Coursera (IBM)',
+				date: 'Dec 2020',
+				about: 'The standard data-science toolkit: Jupyter Notebooks, RStudio, GitHub, and open-source data tools.',
+				href: credentials.toolsDataScience,
+			},
+		],
+	},
+	{
+		title: 'Web Development',
+		certs: [
+			{
+				title: 'Building Web Applications in Django',
+				issuer: 'Coursera (University of Michigan)',
+				date: 'Dec 2020',
+				about: 'Building data-driven web apps with Django’s model-view-template structure, forms and the admin interface.',
+				href: credentials.django,
+			},
+			{
+				title: 'Django Features and Libraries',
+				issuer: 'Coursera (University of Michigan)',
+				date: 'May 2021',
+				about: 'User sign-in, sessions, JavaScript and JSON in Django, and integrating third-party libraries.',
+				href: credentials.djangoFeatures,
+			},
+		],
+	},
+	{
+		title: 'Game Development',
+		certs: [
+			{
+				title: 'Unity Certified Associate: Game Developer',
+				issuer: 'Unity',
+				date: '2022–2025',
+				about: 'Industry certification covering Unity Engine fundamentals: scripting in C#, scene and asset management, physics, animation, and UI.',
+				href: credentials.unity,
+			},
+		],
+	},
+	{
+		title: 'Emerging Technologies',
+		certs: [
+			{
+				title: 'Introduction to Quantum Computing',
+				issuer: 'Frontier Technology Institute',
+				date: 'May 2021',
+				about: 'Qubits, quantum gates and circuits, and the basics of quantum algorithms.',
+				href: credentials.quantum,
+			},
+		],
+	},
+	{
+		title: 'Professional Skills',
+		certs: [
+			{
+				title: 'Graphic Design',
+				issuer: 'Coursera',
+				date: 'Dec 2020',
+				about: 'Visual design basics: typography, color, composition and image-making.',
+				href: credentials.graphicDesign,
+			},
+			{
+				title: 'Business Writing',
+				issuer: 'Coursera',
+				date: 'Nov 2020',
+				about: 'Writing clear, concise professional documents and communication.',
+				href: credentials.businessWriting,
+			},
+		],
+	},
+];
 ---
 
-<PlaceholderPage title="Licenses & Certifications" intro="Licenses and certifications I have earned." />
+<ContentPage title="Licenses & Certifications" intro="Certifications I’ve earned, grouped by area. Each links to its credential.">
+	{
+		groups.map((g) => (
+			<section class="content-section">
+				<h2>{g.title}</h2>
+				<div class="entry-list two-up">
+					{g.certs.map((c) => (
+						<Entry
+							title={c.title}
+							subtitle={`${c.issuer} · ${c.date}`}
+							links={[{ label: 'View credential', href: c.href }]}
+						>
+							<p>{c.about}</p>
+						</Entry>
+					))}
+				</div>
+			</section>
+		))
+	}
+</ContentPage>

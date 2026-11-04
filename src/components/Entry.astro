@@ -1,0 +1,64 @@
+---
+// A content card: a title with a meta line (dates, place), an optional subtitle,
+// a body from the slot, then tags and links. Used across the content pages.
+export interface EntryLink {
+	label: string;
+	href: string;
+}
+
+interface Props {
+	title: string;
+	meta?: string;
+	subtitle?: string;
+	tags?: string[];
+	links?: EntryLink[];
+	note?: string;
+	id?: string;
+	/** Heading level for the title: 2 when the entry sits directly under the page heading. */
+	level?: 2 | 3;
+}
+
+const { title, meta, subtitle, tags, links, note, id, level = 3 } = Astro.props;
+const Heading = level === 2 ? 'h2' : 'h3';
+const isExternal = (href: string) => /^https?:/.test(href);
+---
+
+<article class="entry card" id={id}>
+	<div class="entry-head">
+		<Heading>{title}</Heading>
+		{meta && <p class="entry-meta">{meta}</p>}
+	</div>
+	{subtitle && <p class="entry-sub">{subtitle}</p>}
+	{
+		Astro.slots.has('default') && (
+			<div class="entry-body">
+				<slot />
+			</div>
+		)
+	}
+	{
+		tags && tags.length > 0 && (
+			<ul class="tags" aria-label="Tags">
+				{tags.map((t) => (
+					<li>{t}</li>
+				))}
+			</ul>
+		)
+	}
+	{
+		links && links.length > 0 && (
+			<p class="entry-links">
+				{links.map((l) =>
+					isExternal(l.href) ? (
+						<a href={l.href} target="_blank" rel="noopener">
+							{l.label} ↗
+						</a>
+					) : (
+						<a href={l.href}>{l.label} →</a>
+					),
+				)}
+			</p>
+		)
+	}
+	{note && <p class="entry-note">{note}</p>}
+</article>

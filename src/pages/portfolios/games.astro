@@ -1,5 +1,147 @@
 ---
-import PlaceholderPage from '../../layouts/PlaceholderPage.astro';
+import ContentPage from '../../layouts/ContentPage.astro';
+import Entry from '../../components/Entry.astro';
+import ChipGroups from '../../components/ChipGroups.astro';
+import { clubGames, credentials, games, profiles, repos } from '../../data/links';
+
+const skills = [
+	{ label: 'Engine & languages', items: ['Unity Engine', 'C#', 'HLSL'] },
+	{
+		label: 'Game systems',
+		items: [
+			'Physics-based character controllers',
+			'AI-driven agents',
+			'Real-time strategy mechanics',
+			'Animation state machines',
+		],
+	},
+	{ label: 'Tools', items: ['Blender', 'GitHub', 'Unity ML-Agents'] },
+	{ label: 'Team skills', items: ['Running game jams', 'Project leadership', 'Presenting'] },
+];
+
+// Club games featured above are left out of the chip list; Thylla joins it instead.
+const featuredClub = ['A Crooked Crown', 'Puffer Putt'];
+const crookedCrown = clubGames.find((g) => g.title === 'A Crooked Crown')!;
+const pufferPutt = clubGames.find((g) => g.title === 'Puffer Putt')!;
+const otherClubGames = [
+	{ title: 'Thylla and The Old Gods', href: games.thylla },
+	...clubGames.filter((g) => !featuredClub.includes(g.title)),
+];
+
+const beginnings = [
+	{ title: 'Shadow Bots Mod', text: 'high school: my first Unity project', href: repos.shadowBots },
+	{ title: '2D Open-World Game', text: 'top-down exploration with enemies that react to the player', href: repos.openWorld },
+	{ title: '2D Fighting Game', text: 'stick-figure fighters with smooth animation blending', href: repos.fighting },
+	{ title: 'Flight Simulator', text: 'a biplane with lift, drag and thrust physics (Unity and Blender)' },
+	{ title: 'Chess Game', text: 'Python and Pygame, with legal moves highlighted', href: repos.chess },
+];
 ---
 
-<PlaceholderPage title="Game Development" intro="My accolades and knowledge in game development, with links to my games." />
+<ContentPage
+	title="Game Development"
+	eyebrow="Portfolio"
+	intro="Making games in Unity since high school, from solo game jam entries to team projects as a Game Development Club leader."
+>
+	<div class="prose">
+		<p>
+			Game development is where I started programming. My first Unity project was a mod I built in a high school game
+			design class. Since then I’ve entered game jams, built reusable tools in Unity, and participated in Illinois State
+			University’s Game Development Club, starting as a regular member before becoming the Level Design Lead, then the
+			President. As a leader there, I ran meetings and made project-wide decisions for a club with more than 20 active
+			members. I also earned the Unity Certified Associate: Game Developer certification.
+		</p>
+	</div>
+
+	<section class="content-section">
+		<h2>Skills</h2>
+		<ChipGroups groups={skills} />
+	</section>
+
+	<section class="content-section">
+		<h2>Featured games</h2>
+		<div class="entry-list">
+			<Entry
+				title="The World Tends Toward Chaos"
+				subtitle="Brackeys Game Jam 2021.2 · Solo"
+				links={[
+					{ label: 'Play on itch.io', href: games.chaos },
+					{ label: 'Source', href: repos.chaos },
+				]}
+			>
+				<p>An action game where you survive an endless onslaught of angry 2D polygons. Built in one week.</p>
+			</Entry>
+			<Entry
+				title="A Crooked Crown"
+				subtitle="ISU Game Development Club"
+				links={[{ label: 'Play on itch.io', href: crookedCrown.href }]}
+			>
+				<p>A puzzle game made by a club team.</p>
+			</Entry>
+			<Entry
+				title="Puffer Putt"
+				subtitle="ISU Game Development Club"
+				links={[{ label: 'Play on itch.io', href: pufferPutt.href }]}
+			>
+				<p>Pufferfish golf, made by a club team.</p>
+			</Entry>
+		</div>
+	</section>
+
+	<section class="content-section">
+		<h2>More ISU Game Development Club games</h2>
+		<ul class="jump-nav">
+			{
+				otherClubGames.map((g) => (
+					<li>
+						<a href={g.href} target="_blank" rel="noopener">
+							{g.title}
+						</a>
+					</li>
+				))
+			}
+		</ul>
+	</section>
+
+	<section class="content-section">
+		<h2>Where it started</h2>
+		<div class="list-card card">
+			<ul class="plain-list">
+				{
+					beginnings.map((b) => (
+						<li>
+							<strong>{b.title}</strong>: {b.text}
+							{b.href && (
+								<>
+									{' · '}
+									<a href={b.href} target="_blank" rel="noopener">
+										GitHub
+									</a>
+								</>
+							)}
+						</li>
+					))
+				}
+			</ul>
+		</div>
+	</section>
+
+	<section class="content-section">
+		<h2>Credentials</h2>
+		<div class="list-card card">
+			<ul class="plain-list">
+				<li>
+					Unity Certified Associate: Game Developer (2022–2025) ·{' '}
+					<a href={credentials.unity} target="_blank" rel="noopener">Credential</a>
+				</li>
+			</ul>
+		</div>
+	</section>
+
+	<div class="cta card">
+		<p>Want to play more?</p>
+		<ul class="jump-nav">
+			<li><a href={profiles.itch} target="_blank" rel="noopener">Play more on itch.io</a></li>
+			<li><a href={profiles.github} target="_blank" rel="noopener">Browse the source on GitHub</a></li>
+		</ul>
+	</div>
+</ContentPage>
