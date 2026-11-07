@@ -3,6 +3,7 @@ import { ClientRouter } from 'astro:transitions';
 import Starfield from '../components/Starfield.astro';
 import { sections } from '../data/sections';
 import '../styles/global.css';
+import '../styles/secrets.css';
 
 interface Props {
 	title?: string;
@@ -51,9 +52,25 @@ const path = Astro.url.pathname;
 		<footer class="site-footer container" transition:name="site-footer">
 			<span>© 2026 Daniel Beyer</span>
 			<a href="/credits" aria-current={path.startsWith('/credits') ? 'page' : undefined}>Credits</a>
+			<!-- Shown only after the secret puzzle hunt is finished (src/secrets/finale.ts). -->
+			<button type="button" class="secret-theme-toggle" aria-pressed="false" hidden>✦ Aurora</button>
 		</footer>
 	</body>
 </html>
+
+<script>
+	import { initSecrets } from '../secrets/trigger';
+	import { update } from '../secrets/progress';
+
+	initSecrets();
+	// The footer toggle for the theme unlocked by finishing the puzzle hunt.
+	document.addEventListener('click', (e) => {
+		if (!(e.target as Element).closest?.('.secret-theme-toggle')) return;
+		update((p) => {
+			p.theme = !p.theme;
+		});
+	});
+</script>
 
 <style>
 	.site-header {

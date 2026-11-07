@@ -1223,6 +1223,29 @@ export function lookToward(alt: number, az: number, fov?: number) {
 	if (fov !== undefined) skyZoom.target = clamp(fov, SKY_ZOOM_MIN, SKY_ZOOM_MAX);
 }
 
+/**
+ * Sky view: fix an object on the celestial sphere where the given altitude and azimuth
+ * (radians) point right now, facing the visitor, so it rises and sets with the sky. With a
+ * field of view (degrees), also turn and zoom to it. It's taken down with the sky (a new
+ * place or leaving the view). Used by the secret puzzle hunt (src/secrets/skyRing.ts).
+ * False outside the sky view.
+ */
+export function placeInSky(object: THREE.Object3D, alt: number, az: number, fov?: number): boolean {
+	if (view !== 'surface' || busy || !celestial || !surfaceFrame) return false;
+	celestial.updateMatrixWorld(true);
+	const local = lookDirection(az, alt).applyQuaternion(celestialRotation().invert());
+	object.position.copy(local.multiplyScalar(SKY_RADIUS * 0.95));
+	celestial.add(object);
+	object.lookAt(celestial.getWorldPosition(new THREE.Vector3()));
+	if (fov !== undefined) lookToward(alt, az, fov);
+	return true;
+}
+
+/** Sky view: whether an object placed with placeInSky is still up (the sky hasn't been rebuilt). */
+export function isInSky(object: THREE.Object3D): boolean {
+	return !!celestial && object.parent === celestial;
+}
+
 /** Sky view: where the view points (radians; heading = azimuth from north through east), or null outside it. */
 export function getSkyLook(): { heading: number; pitch: number } | null {
 	if (view !== 'surface' || !surfaceFrame) return null;

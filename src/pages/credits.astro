@@ -48,6 +48,21 @@ const sections = [
 	{ title: 'Galaxies, nebulae and star clusters', intro: 'Photos shown in place of the drawn images when you zoom in.', rows: deep },
 	{ title: 'Comets', intro: "Photos laid along a comet's drawn tail when you zoom in on it.", rows: cometRows },
 	{
+		// Used by a secret puzzle (src/secrets/puzzles/holbein.ts); kept vague on purpose.
+		title: 'Elsewhere on the site',
+		intro: 'For those who look closely.',
+		rows: [
+			{
+				name: 'The Ambassadors (1533)',
+				credit: {
+					artist: 'Hans Holbein the Younger, National Gallery, London',
+					license: 'Public domain',
+					source: 'https://commons.wikimedia.org/wiki/File:Hans_Holbein_the_Younger_-_The_Ambassadors_-_Google_Art_Project.jpg',
+				},
+			},
+		],
+	},
+	{
 		title: 'Code',
 		intro: 'Libraries the site runs on. Astronomy Engine works out where the Sun, the Moon and the planets are at any moment.',
 		rows: code,

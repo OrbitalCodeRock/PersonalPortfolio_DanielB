@@ -1,8 +1,13 @@
 ---
 // Labelled groups of chips: the skills page and the portfolio skill strips.
+import SecretText from './SecretText.astro';
+import type { PuzzleId } from '../secrets/config';
+
 export interface ChipGroup {
 	label: string;
 	items: string[];
+	/** Turns one word of the label into a secret trigger (see Secret.astro). */
+	secret?: { word: string; id: PuzzleId };
 }
 
 interface Props {
@@ -16,7 +21,9 @@ const { groups } = Astro.props;
 	{
 		groups.map((g) => (
 			<section class="chip-group card">
-				<h3>{g.label}</h3>
+				<h3>
+					<SecretText text={g.label} word={g.secret?.word} id={g.secret?.id} />
+				</h3>
 				<ul class="tags">
 					{g.items.map((item) => (
 						<li>{item}</li>
