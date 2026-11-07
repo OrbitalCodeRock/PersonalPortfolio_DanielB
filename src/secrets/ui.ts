@@ -40,7 +40,6 @@ export function openWindow(opts: WindowOptions): SecretWindow {
 	if (opts.width) root.style.setProperty('--secret-w', `${opts.width}px`);
 	root.innerHTML = `
 		<header class="secret-titlebar">
-			<span class="secret-dots" aria-hidden="true"><i></i><i></i><i></i></span>
 			<h2 class="secret-title"></h2>
 			<button type="button" class="secret-close" aria-label="Close">✕</button>
 		</header>

@@ -7,7 +7,7 @@
 //   Room 3: fall into the pit-floor rift, come out of the far right floor rift, rise and steer right
 //           onto the exit ledge.
 // Grates (':') block the player but let rift shots through.
-import { openWindow, solve, chime } from '../ui';
+import { openWindow, solve, chime } from '../ui'; // retired: no longer launched by any trigger
 import { isSolved, getData, setData } from '../progress';
 
 const ID = 'now';

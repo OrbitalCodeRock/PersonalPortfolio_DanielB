@@ -11,7 +11,7 @@ const modules = import.meta.glob<{ launch: () => void }>('./puzzles/*.ts');
 const file: Partial<Record<PuzzleId, string>> = {
 	about: 'hangman',
 	education: 'adventure',
-	now: 'portal',
+	now: 'runner',
 	games: 'chess',
 	web: 'golf',
 	ml: 'holbein',

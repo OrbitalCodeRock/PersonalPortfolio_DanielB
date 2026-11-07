@@ -4,7 +4,7 @@
 export type PuzzleId =
 	| 'about' // "keyboard": the hangman finale
 	| 'education' // "text": console-launched text adventure
-	| 'now' // "momentum": 2D portal-physics rooms
+	| 'now' // "momentum": endless rooftop runner (last one minute)
 	| 'games' // "moves": the chess puzzle (needs the sky view hint)
 	| 'web' // "optimization": fog-of-war contour golf
 	| 'ml' // "linear algebra": shear The Ambassadors (gives the sky view hint)
