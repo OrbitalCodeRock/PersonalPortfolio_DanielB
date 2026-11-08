@@ -85,8 +85,9 @@ export async function getAccount(request: Request, env: Env): Promise<Account | 
 }
 
 async function turnstileOk(env: Env, token: string, ip: string | null): Promise<boolean> {
-	// Without a configured secret, only local testing (AUTH_DEV_LINKS) may skip to the test secret.
-	const secret = env.TURNSTILE_SECRET ?? (env.AUTH_DEV_LINKS === '1' ? '1x0000000000000000000000000000000AA' : null);
+	// Local testing and preview deployments (AUTH_DEV_LINKS) use Turnstile's test keys, whatever secret is
+	// set; production needs the real secret.
+	const secret = env.AUTH_DEV_LINKS === '1' ? '1x0000000000000000000000000000000AA' : (env.TURNSTILE_SECRET ?? null);
 	if (!secret) throw new Error('TURNSTILE_SECRET is not set');
 	const form = new FormData();
 	form.append('secret', secret);

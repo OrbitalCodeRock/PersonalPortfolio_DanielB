@@ -21,7 +21,18 @@ BINS = 16
 #: Longest recipe the model writes (search recipes are 4-12 features).
 MAX_STEPS = 14
 #: Survival-rate range (sloppy bot) each tier's pool is drawn from; mirrors TARGET in scripts/runner/search.ts.
-TARGET = [(0.75, 1.0), (0.6, 1.0), (0.45, 0.95), (0.3, 0.85), (0.3, 0.8)]
+TARGET = [
+    (0.75, 1.0),  # 0-15 s
+    (0.6, 1.0),  # 15-30 s
+    (0.45, 0.95),  # 30-45 s
+    (0.3, 0.85),  # 45-60 s
+    (0.3, 0.8),  # 1-2 min
+    (0.25, 0.65),  # 2-3 min
+    (0.2, 0.55),  # 3-4 min
+    (0.15, 0.45),  # 4-5 min
+    (0.1, 0.35),  # 5-6 min
+    (0.05, 0.3),  # 6 min and on
+]
 
 
 @dataclass(frozen=True)

@@ -1,0 +1,15 @@
+// Only for running migrations on the preview database (see "previews" in wrangler.jsonc); wrangler's
+// migration commands don't look inside the previews block. Not used for deploying.
+//   npx wrangler d1 migrations apply portfolio-leaderboard-preview --remote -c wrangler.preview-db.jsonc
+{
+	"name": "personalportfolio-danielb-preview-db",
+	"compatibility_date": "2026-10-26",
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "portfolio-leaderboard-preview",
+			"database_id": "ed16e632-6012-4b46-85b7-a8d97e1d526d",
+			"migrations_dir": "migrations"
+		}
+	]
+}

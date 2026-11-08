@@ -34,7 +34,12 @@ Run these from the repo root unless noted.
 5. **Generate**: `.venv/Scripts/python -m runner_ml.generate` writes `output/pools.model.json`; add
    `--install` to copy it to `src/secrets/runner/pools.json`, the file the game plays. It only keeps
    recipes a perfect bot clears across the whole band, inside the band's difficulty range, with every
-   mechanic actually needed.
+   mechanic actually needed. `--tiers 6,9 --candidates 1000` redoes only some bands (the rest are kept from
+   the last output), for bands that came up short.
+
+There are 10 bands (`BAND_STARTS` in levelgen.ts): 15 seconds each through the first minute, then a minute
+each up to 6 minutes, then one open-ended band. Each band's survival target is in `schema.py` (and
+`TARGET` in scripts/runner/search.ts), falling from 30–80% at 1–2 minutes to 5–30% after 6 minutes.
 
 `npm run runner:evaluate` playtests whatever pools are installed.
 

@@ -24,6 +24,7 @@ import {
 	type Solid,
 	type Train,
 	DRONE,
+	bandName,
 } from '../runner/levelgen';
 import { createSim, overlaps, FLOOR_MARGIN, type DroneState, type TrainState } from '../runner/sim';
 import { createRunnerSound } from '../runner/sound';
@@ -59,6 +60,40 @@ const STYLES = [
 
 const CSS = `
 .run-wrap { position: relative; }
+.run-turn { display: none; }
+/* Phones held upright: suggest turning sideways. */
+@media (orientation: portrait) and (max-width: 600px) {
+	.run-turn { display: block; margin: 8px 0 0; font-size: 0.85rem; color: var(--text-muted); }
+}
+/*
+ * Phones and small tablets held sideways (and full screen anywhere): the window fills the screen, the game
+ * is as big as the height allows, and the controls sit in a column beside it instead of underneath.
+ */
+@media (orientation: landscape) and (max-height: 560px) {
+	.secret-backdrop:has(.run-window) { padding: 0; align-items: stretch; }
+	.secret-backdrop:has(.run-window) { justify-items: stretch; overflow: hidden; }
+	.run-window { width: 100%; max-width: none; height: 100%; max-height: none; border-radius: 0; border: 0; }
+}
+@media (orientation: landscape) and (max-height: 560px) {
+	.run-window .secret-titlebar { padding: 2px 6px 2px 12px; }
+	.run-window .secret-title { font-size: 0.85rem; }
+	.run-window .secret-body { flex: 1; display: flex; gap: 10px; padding: 6px 8px; overflow: hidden; }
+	.run-window .run-wrap { flex: none; align-self: flex-start; }
+	.run-window .secret-canvas { width: min(calc(100vw - 214px), calc((100dvh - 64px) * 16 / 9)); height: auto; }
+	.run-window .run-bar { flex: 1; min-width: 150px; margin: 0; flex-direction: column; align-items: stretch; justify-content: flex-start; overflow: auto; }
+	.run-window .run-bar > .secret-hint { display: none; }
+	.run-window .run-tools { flex-direction: column; align-items: stretch; gap: 6px; }
+	.run-window .run-tools .secret-btn { font-size: 0.8rem; padding: 6px 8px; }
+	.run-window .run-mode { font-size: 0.75rem; }
+	.run-window .secret-status { padding: 3px 10px; font-size: 0.75rem; }
+}
+.run-window:fullscreen { width: 100vw; height: 100vh; max-height: none; border-radius: 0; border: 0; }
+.run-window:fullscreen .secret-body { flex: 1; display: flex; gap: 10px; padding: 6px 8px; overflow: hidden; }
+.run-window:fullscreen .run-wrap { flex: none; align-self: flex-start; }
+.run-window:fullscreen .secret-canvas { width: min(calc(100vw - 214px), calc((100vh - 64px) * 16 / 9)); height: auto; }
+.run-window:fullscreen .run-bar { flex: 1; min-width: 150px; margin: 0; flex-direction: column; align-items: stretch; justify-content: flex-start; }
+.run-window:fullscreen .run-bar > .secret-hint { display: none; }
+.run-window:fullscreen .run-tools { flex-direction: column; align-items: stretch; }
 .run-bar { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
 .run-bar p { margin: 0; }
 .run-vote { position: absolute; left: 50%; top: 10px; transform: translate(-50%, -6px); display: flex; gap: 6px;
@@ -143,8 +178,24 @@ export function launch(opts: LaunchOptions = {}): void {
 				<button type="button" class="secret-btn run-random" hidden>Random runs</button>
 				<button type="button" class="secret-btn run-choose">Choose segments</button>
 				<button type="button" class="secret-btn run-sound" aria-pressed="true">Sound: on</button>
+				<button type="button" class="secret-btn run-full" hidden>Full screen</button>
 			</div>
-		</div>`;
+		</div>
+		<p class="run-turn">Turn your phone sideways for a bigger view.</p>`;
+	win.root.classList.add('run-window');
+	// Full screen, where the browser allows it on an element (not iPhone Safari).
+	const fullBtn = win.body.querySelector<HTMLButtonElement>('.run-full')!;
+	fullBtn.hidden = !document.fullscreenEnabled;
+	const showFull = () => (fullBtn.textContent = document.fullscreenElement === win.root ? 'Exit full screen' : 'Full screen');
+	fullBtn.addEventListener('click', () => {
+		if (document.fullscreenElement) void document.exitFullscreen();
+		else void win.root.requestFullscreen?.().catch(() => {});
+	});
+	document.addEventListener('fullscreenchange', showFull);
+	win.onClose(() => {
+		document.removeEventListener('fullscreenchange', showFull);
+		if (document.fullscreenElement === win.root) void document.exitFullscreen();
+	});
 	const canvas = win.body.querySelector('canvas')!;
 	const dpr = Math.min(2, window.devicePixelRatio || 1);
 	canvas.width = CW * dpr;
@@ -411,7 +462,6 @@ export function launch(opts: LaunchOptions = {}): void {
 	// The picker: segments from every band, in the order picked; they play after the intro roof.
 	let picking = false;
 	let picks: string[] = [];
-	const bandName = (t: number) => (t === POOLS.length - 1 ? `${t * 15} s and on` : `${t * 15}–${t * 15 + 15} s`);
 	function renderPicker() {
 		picker.innerHTML = `
 			<h3>Choose segments</h3>
@@ -537,10 +587,14 @@ export function launch(opts: LaunchOptions = {}): void {
 		{ f: 0.22, cell: 4, min: 3, max: 11, color: '#1f1b40', lit: 0.05 },
 		{ f: 0.42, cell: 3.4, min: 2, max: 9, color: '#29224a', lit: 0.1 },
 	];
+	/** How far (px) the skyline may rise as the run climbs; past this it stays put, so it never fills the sky. */
+	const SKYLINE_RISE = CH * 0.12;
 	function drawParallax() {
 		LAYERS.forEach((L, li) => {
 			const off = cam.x * L.f;
-			const base = CH + 40 - (camB() * L.f * 0.6 - 0) * SCALE * 0.5;
+			// The skyline drifts up a little as the run climbs (and down as it falls), easing to a stop.
+			const rise = camB() * L.f * 0.3 * SCALE;
+			const base = CH + 40 - SKYLINE_RISE * Math.tanh(rise / SKYLINE_RISE);
 			const unit = SCALE * (0.55 + li * 0.15);
 			const first = Math.floor(off / L.cell) - 1;
 			const count = Math.ceil(VIEW_W / L.cell / (0.55 + li * 0.15)) + 3;
@@ -679,7 +733,9 @@ export function launch(opts: LaunchOptions = {}): void {
 				// Windows.
 				for (let r = 0; ; r++) {
 					const wy = y1 - 1.1 - r * 1.7;
-					if (wy < y0 + 0.2 || wy < camB() - 1) break;
+					// The whole window (0.75 m tall, hanging down from wy) stays inside this part of the wall,
+					// clear of a corridor cut through the building below it.
+					if (wy - 0.75 < y0 + 0.2 || wy < camB() - 1) break;
 					if (wy > camB() + VIEW_H + 1) continue;
 					for (let c = 0; ; c++) {
 						const wx = f.x + 0.7 + c * 1.35;
@@ -848,35 +904,39 @@ export function launch(opts: LaunchOptions = {}): void {
 		for (const d of drones) {
 			if (!visible(d.x - 2, d.x + 2)) continue;
 			const bx = d.x - DRONE.W / 2;
+			// A gentle bob while hovering, for looks only (the sim keeps it still); it settles as you come close,
+			// so the drone you land on or grab is where it's drawn.
+			const near = Math.min(1, Math.abs(d.x - (P.x + W / 2)) / 4);
+			const dy = d.y + (d.mode === 'hover' ? Math.sin(time * 2.2 + d.phase) * 0.18 * near : 0);
 			// Arms and spinning rotors.
 			ctx.strokeStyle = '#7d8aa8';
 			ctx.lineWidth = 2;
 			ctx.beginPath();
-			ctx.moveTo(sx(bx - 0.1), sy(d.y + DRONE.H + 0.15));
-			ctx.lineTo(sx(bx + DRONE.W + 0.1), sy(d.y + DRONE.H + 0.15));
+			ctx.moveTo(sx(bx - 0.1), sy(dy + DRONE.H + 0.15));
+			ctx.lineTo(sx(bx + DRONE.W + 0.1), sy(dy + DRONE.H + 0.15));
 			ctx.stroke();
 			const spin = Math.abs(Math.sin(now / 35));
 			ctx.fillStyle = 'rgba(200, 220, 255, 0.45)';
 			for (const rx of [bx - 0.1, bx + DRONE.W + 0.1]) {
 				ctx.beginPath();
-				ctx.ellipse(sx(rx), sy(d.y + DRONE.H + 0.22), (0.15 + 0.4 * spin) * SCALE, 0.06 * SCALE, 0, 0, Math.PI * 2);
+				ctx.ellipse(sx(rx), sy(dy + DRONE.H + 0.22), (0.15 + 0.4 * spin) * SCALE, 0.06 * SCALE, 0, 0, Math.PI * 2);
 				ctx.fill();
 			}
 			// Body.
 			ctx.fillStyle = '#2c3448';
-			ctx.fillRect(sx(bx), sy(d.y + DRONE.H), DRONE.W * SCALE, DRONE.H * SCALE);
+			ctx.fillRect(sx(bx), sy(dy + DRONE.H), DRONE.W * SCALE, DRONE.H * SCALE);
 			ctx.fillStyle = '#9fb0d0';
-			ctx.fillRect(sx(bx), sy(d.y + DRONE.H), DRONE.W * SCALE, 0.08 * SCALE);
+			ctx.fillRect(sx(bx), sy(dy + DRONE.H), DRONE.W * SCALE, 0.08 * SCALE);
 			ctx.fillStyle = Math.floor(now / 400 + d.phase) % 2 ? '#ff5d5d' : '#5dff9a';
-			ctx.fillRect(sx(bx + 0.12), sy(d.y + 0.3), 0.14 * SCALE, 0.14 * SCALE);
+			ctx.fillRect(sx(bx + 0.12), sy(dy + 0.3), 0.14 * SCALE, 0.14 * SCALE);
 			// The handlebar underneath, glowing when it's yours to grab.
 			ctx.strokeStyle = d.mode === 'carry' ? '#d8f7ff' : CYAN;
 			ctx.lineWidth = 2;
 			ctx.beginPath();
-			ctx.moveTo(sx(d.x - 0.35), sy(d.y));
-			ctx.lineTo(sx(d.x - 0.35), sy(d.y - 0.12));
-			ctx.lineTo(sx(d.x + 0.35), sy(d.y - 0.12));
-			ctx.lineTo(sx(d.x + 0.35), sy(d.y));
+			ctx.moveTo(sx(d.x - 0.35), sy(dy));
+			ctx.lineTo(sx(d.x - 0.35), sy(dy - 0.12));
+			ctx.lineTo(sx(d.x + 0.35), sy(dy - 0.12));
+			ctx.lineTo(sx(d.x + 0.35), sy(dy));
 			ctx.stroke();
 		}
 		const target = mode === 'running' && !P.grounded && !P.grapple ? nearestGrapple() : null;
@@ -1148,7 +1208,7 @@ export function launch(opts: LaunchOptions = {}): void {
 			ctx.font = '12px ui-monospace, Consolas, monospace';
 			ctx.textAlign = 'left';
 			ctx.fillStyle = 'rgba(238, 240, 255, 0.45)';
-			ctx.fillText(`segment ${seg.label} · ${seg.tier * 15}s band`, 12, CH - 12);
+			ctx.fillText(`segment ${seg.label} · ${bandName(seg.tier)}`, 12, CH - 12);
 		}
 		if (goalFlash > 0) {
 			scaled(CW / 2, 130, () => {

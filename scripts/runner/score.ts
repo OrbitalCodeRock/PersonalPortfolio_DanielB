@@ -1,6 +1,6 @@
 // Scoring a runner recipe: playtest it with the bot and judge it. Shared by the MAP-Elites search
 // (search.ts) and the batch evaluator the Python model trains against (evaluate-batch.ts).
-import { SEGMENT_LENGTH, buildRecipe, type FeatureName, type Recipe } from '../../src/secrets/runner/levelgen.ts';
+import { SEGMENT_LENGTH, bandLength, bandStart, buildRecipe, type FeatureName, type Recipe } from '../../src/secrets/runner/levelgen.ts';
 import { evaluate, trial, type Mechanic } from '../../src/secrets/runner/playtest.ts';
 
 /** Mechanics a feature exists to teach; if the perfect run never used it, the feature was skippable. */
@@ -71,10 +71,14 @@ export function scoreRecipe(recipe: Recipe, trials = 8): Score {
 
 /**
  * The strictest check, for recipes about to go into a pool: a perfect bot clears it entering at every
- * second of its band, both at normal speed and arriving 4 m/s fast (off a ramp in the segment before).
+ * second of its band (every 2 s in the minute-long bands), both at normal speed and arriving 4 m/s fast
+ * (off a ramp in the segment before).
  */
 export function strictClears(recipe: Recipe): boolean {
-	for (let t = recipe.tier * 15; t <= recipe.tier * 15 + 15; t += 1) {
+	const t0 = bandStart(recipe.tier);
+	const span = bandLength(recipe.tier);
+	const step = span > 15 ? 2 : 1;
+	for (let t = t0; t <= t0 + span; t += step) {
 		for (const boost of [0, 4]) if (!trial(recipe, recipe.tier, { skill: 1, entryTime: t, boost }).survived) return false;
 	}
 	return true;
