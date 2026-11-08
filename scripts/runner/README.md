@@ -8,6 +8,7 @@ npm run runner:evaluate            # playtest every pool entry with the bot, pri
 npm run runner:evaluate -- 2 3     # only tiers 2 and 3
 npm run runner:search              # MAP-Elites search; rewrites src/secrets/runner/pools.json
 npm run runner:search -- --evals 4000 --tiers 2,3 --pool 12 --seed 3
+npm run runner:votes               # download players' thumbs up/down segment ratings (add -- --local for wrangler dev)
 ```
 
 ## How the pieces fit
@@ -21,6 +22,8 @@ npm run runner:search -- --evals 4000 --tiers 2,3 --pool 12 --seed 3
 | `src/secrets/runner/pools.json` | The recipe pools the game plays, one per tier, written by the search or the model (`ml/runner`). A tier with recipes here uses them; otherwise the game falls back to the seed pools in `seeds.ts`. |
 | `scripts/runner/score.ts` | Shared scoring (validity, survival rate, quality), plus `strictClears`, the full-band check used before a recipe enters a pool. |
 | `scripts/runner/evaluate-batch.ts` | A line-by-line JSON evaluator the Python model talks to. |
+| `src/secrets/runner/poolVersion.ts` | The pools plus a short hash of them. Ratings record it, since ids like `m2-07` are reused when the pools are regenerated. |
+| `scripts/runner/votes.ts` | Downloads the segment ratings from D1 to `ml/runner/data/votes.jsonl` (each with the recipe as it was) and prints a per-recipe tally. |
 | `scripts/runner/search.ts` | MAP-Elites: mutates recipes, playtests each, and keeps the best per cell of a difficulty × variety grid. Each tier's pool comes from the difficulty range in `TARGET`. |
 
 ### What the search scores
@@ -38,8 +41,12 @@ recipe plays. Re-run the search afterwards.
 
 ## Next steps
 
-1. **Player votes.** A thumbs up/down after a run, stored in D1 by the leaderboard Worker against the
-   recipe ids (`s2-07`…) just played.
+1. **Player ratings** are built: after each pool segment, a faint prompt at the top of the game offers
+   thumbs up/down on it for a few seconds (keys 1 and 2, or a tap); when a run ends it asks about the
+   segment that ended it. The Worker (`worker/index.ts`, `POST /api/runner/vote`) stores one rating per
+   segment of a run in D1, with whether it was cleared or ended the run, and the time spent in it
+   (`migrations/0002_runner_votes.sql`). Once there are enough, a model of ratings can join the
+   generator's reward.
 2. **The generative model** is built: see `ml/runner/README.md`. It's pretrained on the search's logs,
    fine-tuned against the bot, and its pools are what the game currently plays. A model of player
    votes can be added to its reward once votes exist.

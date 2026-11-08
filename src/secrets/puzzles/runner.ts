@@ -9,7 +9,7 @@
 // down; hold jump to dive) or stand on. The world and physics are in src/secrets/runner/sim.ts and the
 // levels in levelgen.ts; this file draws, plays sound and handles input.
 import { openWindow, solve, chime } from '../ui';
-import { getData, isSolved, setData } from '../progress';
+import { getData, isSolved, load, setData } from '../progress';
 import {
 	PHYS,
 	START_SPEED,
@@ -28,11 +28,10 @@ import {
 import { createSim, overlaps, FLOOR_MARGIN, type DroneState, type TrainState } from '../runner/sim';
 import { createRunnerSound } from '../runner/sound';
 import { setRecipePools } from '../runner/seeds';
-import searchedPools from '../runner/pools.json';
-import type { Recipe } from '../runner/levelgen';
+import { POOLS, POOLS_VERSION, findRecipe } from '../runner/poolVersion';
 
-// Level pools found by scripts/runner/search.ts (see src/secrets/runner/).
-setRecipePools((searchedPools as { pools: Recipe[][] }).pools);
+// Level pools written by the level model or the search (src/secrets/runner/pools.json).
+setRecipePools(POOLS);
 
 const ID = 'now';
 /** Seconds a run has to last to solve the secret. */
@@ -59,6 +58,17 @@ const CSS = `
 .run-wrap { position: relative; }
 .run-bar { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
 .run-bar p { margin: 0; }
+.run-vote { position: absolute; left: 50%; top: 10px; transform: translate(-50%, -6px); display: flex; gap: 6px;
+	align-items: center; padding: 3px 4px 3px 12px; border-radius: 999px; background: rgba(8, 10, 28, 0.55);
+	border: 1px solid rgba(255, 255, 255, 0.12); color: #eef0ff; font-size: 0.78rem; white-space: nowrap;
+	opacity: 0; visibility: hidden; transition: opacity .25s, transform .25s, visibility 0s .25s; }
+.run-vote.is-on { opacity: 0.62; visibility: visible; transform: translate(-50%, 0); transition: opacity .25s, transform .25s; }
+.run-vote.is-on:hover, .run-vote.is-on:focus-within { opacity: 1; }
+.run-vote button { font: inherit; line-height: 1; cursor: pointer; padding: 3px 8px; border-radius: 999px; display: inline-flex;
+	gap: 5px; align-items: center; border: 1px solid rgba(255, 255, 255, 0.14); background: transparent; color: inherit; }
+.run-vote button[hidden] { display: none; }
+.run-vote button:hover, .run-vote button:focus-visible { background: rgba(255, 231, 163, 0.16); border-color: rgba(255, 231, 163, 0.55); }
+.run-vote kbd { font: 600 0.68rem ui-monospace, Consolas, monospace; opacity: 0.7; }
 `;
 
 const hash = (a: number, b: number, c = 0) => {
@@ -79,9 +89,14 @@ export function launch(): void {
 	win.body.innerHTML = `
 		<div class="run-wrap">
 			<canvas class="secret-canvas" aria-label="Rooftop runner. Press space or tap to jump."></canvas>
+			<div class="run-vote" role="group" aria-label="Rate the last segment" aria-live="polite">
+				<span class="run-vote-q"></span>
+				<button type="button" data-vote="1" aria-label="Thumbs up (key 1)" title="Thumbs up (1)">👍<kbd>1</kbd></button>
+				<button type="button" data-vote="-1" aria-label="Thumbs down (key 2)" title="Thumbs down (2)">👎<kbd>2</kbd></button>
+			</div>
 		</div>
 		<div class="run-bar">
-			<p class="secret-hint">Jump: Space, ↑, W, or tap/click the game. Hold for a higher jump. R restarts.</p>
+			<p class="secret-hint">Jump: Space, ↑, W, or tap/click the game. Hold for a higher jump. R restarts. Rate a segment with 1 (👍) or 2 (👎).</p>
 			<button type="button" class="secret-btn run-sound" aria-pressed="true">Sound: on</button>
 		</div>`;
 	const canvas = win.body.querySelector('canvas')!;
@@ -137,6 +152,7 @@ export function launch(): void {
 					break;
 				case 'die':
 					deadFor = 0;
+					onRunOver();
 					chime('error');
 					if (sim.S.time > best) {
 						best = sim.S.time;
@@ -175,9 +191,117 @@ export function launch(): void {
 	let wasRiding = false;
 	const HINT_KEYS = ['jump', 'hazard', 'slope', 'grapple', 'wallrun', 'chimney', 'train', 'ramp', 'chain', 'switchback', 'updraft', 'drone', 'dronestep', 'longtrain'];
 
+	// ---- Ratings: thumbs up/down on each segment, sent to the Worker for training the level model ---
+	// After leaving a pool segment, a faint prompt at the top offers a rating of it for a few seconds (keys
+	// 1 and 2, or a tap). When the run ends, it asks about the segment the run ended in and stays up.
+	/** The run's pool segments in order, and when each was entered (run clock). */
+	let played: { id: string; enteredAt: number }[] = [];
+	let runId = '';
+	interface Prompt {
+		position: number;
+		id: string;
+		outcome: 'cleared' | 'died';
+		seconds: number;
+		runSeconds: number;
+		cause?: string;
+	}
+	let prompt: Prompt | null = null;
+	/** Seconds the prompt has left on screen (Infinity while the run is over). */
+	let promptLeft = 0;
+	let promptVoted = false;
+	const RATE_FOR = 6;
+	const voteBox = win.body.querySelector<HTMLElement>('.run-vote')!;
+	const voteQ = voteBox.querySelector<HTMLElement>('.run-vote-q')!;
+	const voteBtns = [...voteBox.querySelectorAll<HTMLButtonElement>('button')];
+	const newRunId = () =>
+		typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+
+	function ask(p: Prompt) {
+		prompt = p;
+		promptVoted = false;
+		promptLeft = p.outcome === 'died' ? Infinity : RATE_FOR;
+		voteQ.textContent = p.outcome === 'died' ? 'Rate the segment that ended the run' : 'Rate that segment';
+		voteBtns.forEach((b) => (b.hidden = false));
+		voteBox.classList.add('is-on');
+	}
+	function hidePrompt() {
+		prompt = null;
+		promptLeft = 0;
+		voteBox.classList.remove('is-on');
+	}
+
+	/** Notes the segment underfoot when it's a new pool recipe, and offers a rating of the one before. */
+	function trackSegment() {
+		if (mode !== 'running') return;
+		const seg = segments.find((s) => P.x >= s.x0 && P.x < s.x1);
+		if (!seg?.label || !findRecipe(seg.label)) return;
+		const prev = played[played.length - 1];
+		if (prev?.id === seg.label) return;
+		played.push({ id: seg.label, enteredAt: time });
+		if (prev) {
+			const position = played.length - 2;
+			ask({ position, id: prev.id, outcome: 'cleared', seconds: time - prev.enteredAt, runSeconds: time });
+		}
+	}
+
+	/** On the sim's 'die' event, which arrives mid-step: reads the sim directly, not the synced copies. */
+	function onRunOver() {
+		const last = played[played.length - 1];
+		if (!last) return hidePrompt();
+		ask({
+			position: played.length - 1,
+			id: last.id,
+			outcome: 'died',
+			seconds: sim.S.time - last.enteredAt,
+			runSeconds: sim.S.time,
+			cause: sim.S.deathCause,
+		});
+	}
+
+	function rate(value: 1 | -1) {
+		const p = prompt;
+		if (!p || promptVoted) return;
+		promptVoted = true;
+		voteBtns.forEach((b) => (b.hidden = true));
+		voteQ.textContent = value > 0 ? '👍 Thanks!' : '👎 Thanks, noted.';
+		if (p.outcome !== 'died') promptLeft = 1.2;
+		void fetch('/api/runner/vote', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({
+				playerId: load().playerId,
+				runId,
+				position: p.position,
+				id: p.id,
+				vote: value,
+				poolsVersion: POOLS_VERSION,
+				outcome: p.outcome,
+				seconds: +p.seconds.toFixed(2),
+				runSeconds: +p.runSeconds.toFixed(2),
+				cause: p.cause,
+			}),
+		})
+			.then((res) => {
+				if (!res.ok) throw new Error(String(res.status));
+			})
+			.catch(() => {
+				// Mid-run a lost rating isn't worth interrupting for; at the end, say so.
+				if (prompt === p && p.outcome === 'died') voteQ.textContent = 'Couldn’t send that rating right now.';
+			});
+	}
+	voteBox.addEventListener('click', (e) => {
+		const btn = (e.target as Element).closest<HTMLButtonElement>('[data-vote]');
+		if (btn) rate(btn.dataset.vote === '1' ? 1 : -1);
+	});
+	// Taps on the prompt shouldn't reach the game underneath.
+	voteBox.addEventListener('pointerdown', (e) => e.stopPropagation());
+
 	function reset() {
 		sim.reset();
 		sync();
+		played = [];
+		runId = newRunId();
+		hidePrompt();
 		deadFor = 0;
 		showHint = Object.fromEntries(HINT_KEYS.map((k) => [k, (seenHints[k] ?? 0) < 3]));
 		cam.x = P.x - VIEW_W * 0.28;
@@ -930,6 +1054,10 @@ export function launch(): void {
 			if (!e.repeat) press();
 		} else if (e.code === 'KeyR') {
 			reset();
+		} else if (e.code === 'Digit1' || e.code === 'Numpad1') {
+			rate(1);
+		} else if (e.code === 'Digit2' || e.code === 'Numpad2') {
+			rate(-1);
 		}
 	};
 	const onKeyUp = (e: KeyboardEvent) => {
@@ -959,7 +1087,12 @@ export function launch(): void {
 			acc -= STEP;
 		}
 		sync();
+		trackSegment();
 		if (mode === 'dead') deadFor += dt;
+		if (prompt) {
+			promptLeft -= dt;
+			if (promptLeft <= 0) hidePrompt();
+		}
 		goalFlash = Math.max(0, goalFlash - dt * 0.6);
 		// Wind rises with speed, swells during a boost (over the speed cap) and while falling fast.
 		if (mode === 'running') {

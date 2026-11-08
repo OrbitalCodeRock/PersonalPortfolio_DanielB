@@ -11,7 +11,16 @@
 // aren't on yet. Rank = number of people on that board before you + 1, and posting a board again returns
 // the same rank. The "all" board also needs the hangman phrase. None of this is real anti-cheat: the site
 // is static, so a determined player could read every answer from the page's JavaScript.
+//
+// It also takes thumbs up/down ratings of rooftop runner segments (the Now page), for the level model:
+//
+//   POST /api/runner/vote  { playerId, runId, position, id, vote: 1 | -1, poolsVersion,
+//                            outcome: 'cleared' | 'died', seconds, runSeconds, cause? }  → { ok: true }
+//
+// One rating per segment of a run (sending again changes it). Ratings for pools other than the ones
+// deployed are dropped. Read them back with `npm run runner:votes` (scripts/runner/votes.ts).
 import { PHRASE, PUZZLES } from '../src/secrets/config';
+import { POOLS_VERSION, findRecipe } from '../src/secrets/runner/poolVersion';
 
 interface D1Result<T> {
 	results: T[];
@@ -24,7 +33,7 @@ interface D1Prepared {
 }
 interface Env {
 	ASSETS: { fetch(request: Request): Promise<Response> };
-	DB: { prepare(sql: string): D1Prepared };
+	DB: { prepare(sql: string): D1Prepared; batch(statements: D1Prepared[]): Promise<unknown[]> };
 }
 
 const BOARDS = new Set<string>(['all', ...PUZZLES.map((p) => p.id)]);
@@ -99,6 +108,82 @@ async function write(request: Request, env: Env): Promise<Response> {
 	return json({ ranks });
 }
 
+/** Most ratings one visitor can send in an hour (a segment takes about 10 s); the rest are ignored. */
+const VOTES_PER_HOUR = 400;
+
+const ID_RE = /^[\w-]{8,64}$/;
+const seconds = (v: unknown) => {
+	const n = Number(v);
+	return Number.isFinite(n) && n >= 0 && n <= 3600 ? n : null;
+};
+
+async function vote(request: Request, env: Env): Promise<Response> {
+	let body: Record<string, unknown>;
+	try {
+		body = await request.json();
+	} catch {
+		return json({ error: 'Bad request.' }, 400);
+	}
+	const { playerId, runId, poolsVersion, id, outcome, cause } = body;
+	const value = body.vote;
+	const position = Number(body.position);
+	const segSeconds = seconds(body.seconds);
+	const runSeconds = seconds(body.runSeconds);
+	if (
+		typeof playerId !== 'string' ||
+		!ID_RE.test(playerId) ||
+		typeof runId !== 'string' ||
+		!ID_RE.test(runId) ||
+		(value !== 1 && value !== -1) ||
+		typeof poolsVersion !== 'string' ||
+		typeof id !== 'string' ||
+		(outcome !== 'cleared' && outcome !== 'died') ||
+		!Number.isInteger(position) ||
+		position < 0 ||
+		position > 1000 ||
+		segSeconds === null ||
+		runSeconds === null ||
+		(cause !== undefined && typeof cause !== 'string')
+	) {
+		return json({ error: 'Bad request.' }, 400);
+	}
+	// From pools that are no longer deployed (a tab left open across a deploy): dropped, quietly.
+	if (poolsVersion !== POOLS_VERSION) return json({ ok: true, dropped: 'stale pools' });
+	const recipe = findRecipe(id);
+	if (!recipe) return json({ error: 'Bad request.' }, 400);
+
+	const recent = await env.DB.prepare(
+		`SELECT COUNT(*) AS n FROM runner_votes WHERE player_id = ? AND created_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-1 hour')`,
+	)
+		.bind(playerId)
+		.first<{ n: number }>();
+	if ((recent?.n ?? 0) >= VOTES_PER_HOUR) return json({ ok: true, dropped: 'rate' });
+
+	await env.DB.batch([
+		env.DB.prepare(
+			'INSERT INTO runner_recipes (pools_version, recipe_id, tier, recipe) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING',
+		).bind(poolsVersion, id, recipe.tier, JSON.stringify(recipe)),
+		// Changing your mind on the same segment replaces the vote; a different player can't overwrite it.
+		env.DB.prepare(
+			`INSERT INTO runner_votes (run_id, position, player_id, pools_version, recipe_id, vote, outcome, seconds, run_seconds, cause)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			 ON CONFLICT (run_id, position) DO UPDATE SET vote = excluded.vote WHERE runner_votes.player_id = excluded.player_id`,
+		).bind(
+			runId,
+			position,
+			playerId,
+			poolsVersion,
+			id,
+			value,
+			outcome,
+			segSeconds,
+			runSeconds,
+			outcome === 'died' && typeof cause === 'string' ? cause.slice(0, 80) : null,
+		),
+	]);
+	return json({ ok: true });
+}
+
 export default {
 	async fetch(request: Request, env: Env): Promise<Response> {
 		const url = new URL(request.url);
@@ -110,6 +195,15 @@ export default {
 			} catch (err) {
 				console.error(err);
 				return json({ error: 'The leaderboard is unavailable.' }, 500);
+			}
+		}
+		if (url.pathname === '/api/runner/vote') {
+			if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);
+			try {
+				return await vote(request, env);
+			} catch (err) {
+				console.error(err);
+				return json({ error: 'Votes are unavailable.' }, 500);
 			}
 		}
 		if (url.pathname.startsWith('/api/')) return json({ error: 'Not found.' }, 404);

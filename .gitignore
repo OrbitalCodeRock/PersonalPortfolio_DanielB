@@ -33,3 +33,6 @@ ml/runner/data/
 ml/runner/checkpoints/
 ml/runner/output/
 __pycache__/
+
+# Wrangler local state (local D1 database etc.)
+.wrangler/
