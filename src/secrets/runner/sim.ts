@@ -298,11 +298,12 @@ export function createSim(opts: SimOptions = {}) {
 				emit({ type: 'clunk', level });
 			}
 		}
-		// Drones bob in place, or fly back to their spot after carrying you down.
+		// Drones hold their spot (the bob you see is drawn only, so where one is when you arrive never
+		// depends on the moment), or fly back to it after carrying you down.
 		for (const d of S.drones) {
 			if (d.mode === 'hover') {
 				d.x = d.home.x;
-				d.y = d.home.y + Math.sin(S.time * 2.2 + d.phase) * 0.22;
+				d.y = d.home.y;
 			} else if (d.mode === 'return') {
 				const dx = d.home.x - d.x;
 				const dy = d.home.y - d.y;

@@ -1,6 +1,6 @@
 {
 	"note": "Written by scripts/runner/schema.ts. Each parameter is 0..1; missing ones read as 0.5.",
-	"tiers": 5,
+	"tiers": 10,
 	"features": [
 		{
 			"name": "gap",

@@ -24,8 +24,27 @@ export const PHYS = {
 /** Speed at the start of a run, and how the cap rises with time. */
 export const START_SPEED = 8;
 export const maxSpeedAt = (t: number) => Math.min(22, 9 + 0.07 * t);
-export const tierAt = (t: number) => Math.min(TIERS - 1, Math.floor(t / 15));
-export const TIERS = 5;
+/**
+ * When each time band (tier) starts, in seconds: 15-second bands through the first minute, then a band per
+ * minute, each meant to be harder than the last. The last band runs on for as long as the run lasts.
+ */
+export const BAND_STARTS = [0, 15, 30, 45, 60, 120, 180, 240, 300, 360];
+export const TIERS = BAND_STARTS.length;
+export const bandStart = (tier: number) => BAND_STARTS[Math.min(tier, TIERS - 1)];
+/** A band's length in seconds; the open-ended last band counts as a minute. */
+export const bandLength = (tier: number) => (tier < TIERS - 1 ? BAND_STARTS[tier + 1] - BAND_STARTS[tier] : 60);
+export const tierAt = (t: number) => {
+	let tier = 0;
+	while (tier < TIERS - 1 && t >= BAND_STARTS[tier + 1]) tier++;
+	return tier;
+};
+/** "0–15 s", "1–2 min", "6 min and on". */
+export function bandName(tier: number): string {
+	const a = bandStart(tier);
+	if (tier >= TIERS - 1) return a >= 60 ? `${a / 60} min and on` : `${a} s and on`;
+	const b = a + bandLength(tier);
+	return b <= 60 ? `${a}–${b} s` : `${a / 60}–${b / 60} min`;
+}
 /** 15 seconds at the starting speed. */
 export const SEGMENT_LENGTH = START_SPEED * 15;
 export const STREET = -80;
@@ -196,8 +215,8 @@ export interface Recipe {
 	id?: string;
 }
 
-/** The speed a tier's gaps are sized for: the top speed halfway through its 15-second band. */
-export const tierSpeed = (tier: number) => maxSpeedAt(tier * 15 + 7.5);
+/** The speed a tier's gaps are sized for: the top speed 7.5 s into its band. Later in a long band runs are faster; the strict check (scripts/runner/score.ts) makes sure pooled segments still clear. */
+export const tierSpeed = (tier: number) => maxSpeedAt(bandStart(tier) + 7.5);
 
 /**
  * The segment for (seed, tier), placed at (x0, y0): x0 is where the previous segment's last roof ended
@@ -328,6 +347,9 @@ function construct(
 	const x0 = 0;
 	const y0 = 0;
 	const speed = tierSpeed(tier);
+	// How much the layout tightens with the band: one step per band through the first minute, then
+	// 0.4 per minute-long band, so the late bands get harder without becoming impossible to build.
+	const lvl = Math.min(tier, 4) + Math.max(0, tier - 4) * 0.4;
 	let spec: FeatureSpec = { type: 'gap', p: {} };
 	/** The current feature's parameter `name`, 0..1. */
 	const u = (name: string) => {
@@ -378,9 +400,9 @@ function construct(
 	const maxGap = (dh: number) => Math.max(1.6, jumpReach(v, dh) - 0.9);
 	const gapFor = (name: string, dh: number, lo = 1.4, scale = 1) => {
 		const hi = maxGap(dh) * Math.min(0.9, 0.5 + 0.1 * tier) * scale;
-		return range(name, Math.min(lo + tier * 0.35, hi * 0.8), hi);
+		return range(name, Math.min(lo + lvl * 0.35, hi * 0.8), hi);
 	};
-	const roofLen = (a = 5, b = 11, name = 'roof') => Math.max(3.5, range(name, a, b) - tier * 0.5);
+	const roofLen = (a = 5, b = 11, name = 'roof') => Math.max(3.5, range(name, a, b) - lvl * 0.5);
 
 	/**
 	 * A train across a viaduct between two tunnels. A long one is a ride of 55–80 m on a longer train,
@@ -402,7 +424,7 @@ function construct(
 			startX: x - 0.5,
 			len: long ? 40 : 24,
 			top,
-			boost: 3 + tier * 0.4,
+			boost: 3 + lvl * 0.4,
 			endX: x + G,
 			x0: x,
 			x1: x + G,
@@ -420,7 +442,7 @@ function construct(
 		x += G;
 		h = far;
 		// Long enough to shed the train's extra speed before whatever comes next.
-		const L = Math.max(roofLen(8, 12), (speed + 4 + tier * 0.4) * 0.9);
+		const L = Math.max(roofLen(8, 12), (speed + 4 + lvl * 0.4) * 0.9);
 		building(x, L, h, { tunnel: { side: 'left', ...tunnel } });
 		x += L;
 	};
@@ -452,7 +474,7 @@ function construct(
 			x += L;
 		},
 		slope() {
-			const d = range('drop', 2, 3.4 + tier * 0.5);
+			const d = range('drop', 2, 3.4 + lvl * 0.5);
 			const w = d * range('steep', 1.4, 2);
 			const L2 = range('roof', 6, 10);
 			building(x, w + L2, h - d);
@@ -484,7 +506,7 @@ function construct(
 				x += gapFor(`gap${i}`, dh, 1.4, 0.75);
 				h += dh;
 				// Wide enough to land and jump again at this speed (about a fifth of a second underfoot).
-				const w = Math.max(speed * 0.2, range(`w${i}`, 1.3, 2.1) - tier * 0.12);
+				const w = Math.max(speed * 0.2, range(`w${i}`, 1.3, 2.1) - lvl * 0.12);
 				seg.solids.push({ x, y: h - 0.3, w, h: 0.3, kind: 'ledge' });
 				x += w;
 			}
@@ -508,7 +530,7 @@ function construct(
 		},
 		grapple() {
 			const dh = range('dh', -1.5, 0.4);
-			const g = range('width', 9, 12.5 + tier);
+			const g = range('width', 9, 12.5 + lvl);
 			seg.grapples.push({ x: x + g * range('hookAt', 0.42, 0.55), y: h + range('hookH', 4.2, 5.4) });
 			hint('grapple', 'In the air, press jump near a hook', x + g * 0.48, h + 7);
 			x += g;
@@ -519,7 +541,7 @@ function construct(
 			x += L;
 		},
 		wallrun() {
-			const g = range('width', 10, 13.5 + tier * 1.5);
+			const g = range('width', 10, 13.5 + lvl * 1.5);
 			const dh = range('dh', -1, 0.4);
 			seg.wallRuns.push({ x: x + 0.5, y: h + 0.5, w: g - 1, h: 5 });
 			hint('wallrun', 'Hold jump to run along the panel', x + g / 2, h + 5.2);
@@ -536,7 +558,7 @@ function construct(
 			// Kick off the wall too high and you sail back over the slab; the crate turns you around.
 			crate(x + 1.8, h);
 			x += L1;
-			const top = h + range('rise', 5, 6.8 + tier * 0.3);
+			const top = h + range('rise', 5, 6.8 + lvl * 0.3);
 			const slabW = 0.5;
 			const slabX = x - 2.7 - slabW;
 			const slabY = h + 2.3;
@@ -656,7 +678,7 @@ function construct(
 		drone() {
 			// A drone hovers just past the edge of a wide gap. Jump up into it to grab it and glide across;
 			// the far roof is lower. Hold jump to drop faster.
-			const g = range('width', 12, 17 + tier);
+			const g = range('width', 12, 17 + lvl);
 			const dx = range('dx', 2.5, 4);
 			const dy = range('dy', 2.6, 3.1);
 			seg.drones.push({ x: x + dx, y: h + dy });

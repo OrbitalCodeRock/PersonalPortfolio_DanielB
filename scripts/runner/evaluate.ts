@@ -6,6 +6,7 @@
 // "clears" = a perfect-timing bot gets through; "rate" = share of sloppier runs that survive (how
 // forgiving it is); "fails on" = which features the sloppy runs died on.
 import { evaluate } from '../../src/secrets/runner/playtest.ts';
+import { bandName } from '../../src/secrets/runner/levelgen.ts';
 import { SEED_POOLS, entryKey, entrySegment } from '../../src/secrets/runner/seeds.ts';
 import { loadRecipePools } from './pools.ts';
 
@@ -14,7 +15,7 @@ const recipePools = loadRecipePools();
 
 for (let tier = 0; tier < SEED_POOLS.length; tier++) {
 	if (tiers.length && !tiers.includes(tier)) continue;
-	console.log(`\nTier ${tier} (${tier * 15}–${tier * 15 + 15} s)`);
+	console.log(`\nTier ${tier} (${bandName(tier)})`);
 	const entries = [...SEED_POOLS[tier], ...(recipePools[tier] ?? [])];
 	let clear = 0;
 	let rateSum = 0;

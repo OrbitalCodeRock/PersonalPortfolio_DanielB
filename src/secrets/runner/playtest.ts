@@ -4,7 +4,7 @@
 // Each trial: the intro roof (to get up to speed), then the segment under test, then flat roof. The
 // clock starts inside the segment's time band, so the speed cap matches what it was built for.
 import { createBot } from './bot.ts';
-import { type FeatureName, type Recipe } from './levelgen.ts';
+import { bandLength, bandStart, maxSpeedAt, type FeatureName, type Recipe } from './levelgen.ts';
 import type { PoolEntry } from './seeds.ts';
 import { createSim } from './sim.ts';
 
@@ -50,8 +50,11 @@ export function trial(
 	});
 	sim.S.forced = [[entry, tier]];
 	sim.reset();
-	sim.S.time = opts.entryTime ?? tier * 15 + 2;
+	sim.S.time = opts.entryTime ?? bandStart(tier) + 2;
 	sim.start();
+	// Already at full speed for this moment of the run, as in a real run (the intro roof alone is too
+	// short to get there at the faster late-game speeds).
+	sim.S.P.vx = maxSpeedAt(sim.S.time) * sim.S.P.dir;
 	const seg = sim.S.segments[1];
 	const P = sim.S.P;
 	const bot = createBot(sim, { rnd: mulberry32(opts.seed ?? 1), skill: opts.skill ?? 1 });
@@ -117,12 +120,14 @@ export interface Evaluation {
  */
 export function evaluate(entry: PoolEntry, tier: number, opts: { trials?: number; skill?: number } = {}): Evaluation {
 	const trials = opts.trials ?? 8;
+	const t0 = bandStart(tier);
+	const span = bandLength(tier);
 	const edges = [
-		...[1, 14.5].map((t) => trial(entry, tier, { skill: 1, entryTime: tier * 15 + t })),
+		...[1, span - 0.5].map((t) => trial(entry, tier, { skill: 1, entryTime: t0 + t })),
 		// The segment before can end with a ramp or slope, so it must cope with arriving 4 m/s fast.
-		trial(entry, tier, { skill: 1, entryTime: tier * 15 + 7, boost: 4 }),
+		trial(entry, tier, { skill: 1, entryTime: t0 + span / 2, boost: 4 }),
 	];
-	const perfect = trial(entry, tier, { skill: 1, entryTime: tier * 15 + 7 });
+	const perfect = trial(entry, tier, { skill: 1, entryTime: t0 + span / 2 });
 	if (!perfect.survived || edges.some((r) => !r.survived)) {
 		const failed = [perfect, ...edges].find((r) => !r.survived)!;
 		return { clears: false, rate: 0, failures: { [failed.failedOn!]: 1 }, used: perfect.used, seconds: perfect.seconds };
@@ -130,7 +135,7 @@ export function evaluate(entry: PoolEntry, tier: number, opts: { trials?: number
 	const failures: Evaluation['failures'] = {};
 	let ok = 0;
 	for (let i = 0; i < trials; i++) {
-		const r = trial(entry, tier, { skill: opts.skill ?? 0.55, seed: i + 1, entryTime: tier * 15 + 1 + (12 * i) / Math.max(1, trials - 1) });
+		const r = trial(entry, tier, { skill: opts.skill ?? 0.55, seed: i + 1, entryTime: t0 + 1 + ((span - 3) * i) / Math.max(1, trials - 1) });
 		if (r.survived) ok++;
 		else failures[r.failedOn!] = (failures[r.failedOn!] ?? 0) + 1;
 	}

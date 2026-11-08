@@ -37,6 +37,11 @@ def main() -> None:
     ap.add_argument("--model", default=None, help="checkpoint (default: finetuned.pt, else pretrained.pt)")
     ap.add_argument("--install", action="store_true", help="also write src/secrets/runner/pools.json")
     ap.add_argument("--seed", type=int, default=3)
+    ap.add_argument(
+        "--tiers",
+        default="",
+        help="only these tiers, e.g. 6,9; the others keep their pools from output/pools.model.json",
+    )
     args = ap.parse_args()
     torch.manual_seed(args.seed)
     random.seed(args.seed)
@@ -47,9 +52,17 @@ def main() -> None:
     model.eval()
     print(f"generate: {path.name}, {args.candidates} candidates per tier")
 
-    pools = []
+    only = {int(t) for t in args.tiers.split(",") if t}
+    previous = OUT / "pools.model.json"
+    pools: list[list[dict]] = []
+    if only and previous.exists():
+        pools = json.loads(previous.read_text(encoding="utf8"))["pools"]
+    while len(pools) < schema.tiers:
+        pools.append([])
     with NodeEvaluator(args.workers) as ev, torch.no_grad():
         for tier in range(schema.tiers):
+            if only and tier not in only:
+                continue
             lo, hi = TARGET[tier]
             targets = [lo + (hi - lo) * (i + 0.5) / args.candidates for i in range(args.candidates)]
             types, bins, _, _ = model.sample(
@@ -83,7 +96,7 @@ def main() -> None:
                 f"  tier {tier}: {valid}/{args.candidates} valid, {len(good)} in range, {len(unique)} distinct, "
                 f"kept {len(chosen)} that pass the strict check"
             )
-            pools.append(chosen)
+            pools[tier] = chosen
 
     OUT.mkdir(exist_ok=True)
     doc = {"note": f"Written by ml/runner (runner_ml.generate, {path.name}).", "pools": pools}
