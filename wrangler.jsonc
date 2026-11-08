@@ -42,5 +42,26 @@
 		}
 	],
 	// Sign-in emails (worker/auth.ts), sent with Cloudflare Email Service.
-	"send_email": [{ "name": "EMAIL" }]
+	"send_email": [{ "name": "EMAIL" }],
+	// Preview deployments (one per pull request) are a test copy: their own database, so they never touch
+	// the real leaderboards, and sign-in links shown on the page instead of emailed, with Turnstile's
+	// always-pass test key (real keys only work on the site's own hostnames). Set up once:
+	//   npx wrangler d1 create portfolio-leaderboard-preview   → paste its database_id below
+	//   npx wrangler d1 migrations apply portfolio-leaderboard-preview --remote -c wrangler.preview-db.jsonc
+	"previews": {
+		"vars": {
+			"EMAIL_FROM": "Daniel Beyer <signin@danielbeyer.dev>",
+			"TURNSTILE_SITE_KEY": "1x00000000000000000000AA",
+			"AUTH_DEV_LINKS": "1"
+		},
+		"d1_databases": [
+			{
+				"binding": "DB",
+				"database_name": "portfolio-leaderboard-preview",
+				"database_id": "ed16e632-6012-4b46-85b7-a8d97e1d526d",
+				"migrations_dir": "migrations"
+			}
+		],
+		"send_email": [{ "name": "EMAIL" }]
+	}
 }
