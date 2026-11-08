@@ -1,0 +1,200 @@
+{
+	"note": "Written by scripts/runner/schema.ts. Each parameter is 0..1; missing ones read as 0.5.",
+	"tiers": 5,
+	"features": [
+		{
+			"name": "gap",
+			"minTier": 0,
+			"params": [
+				"dh",
+				"roof",
+				"width"
+			]
+		},
+		{
+			"name": "hazard",
+			"minTier": 1,
+			"params": [
+				"h",
+				"len",
+				"pair",
+				"spacing",
+				"w"
+			]
+		},
+		{
+			"name": "slope",
+			"minTier": 0,
+			"params": [
+				"drop",
+				"roof",
+				"steep"
+			]
+		},
+		{
+			"name": "opening",
+			"minTier": 0,
+			"params": [
+				"exit",
+				"gap",
+				"hasGap",
+				"height",
+				"inner",
+				"len"
+			]
+		},
+		{
+			"name": "ledges",
+			"minTier": 0,
+			"params": [
+				"dh",
+				"dh0",
+				"dh1",
+				"gap",
+				"gap0",
+				"gap1",
+				"roof",
+				"two",
+				"w0",
+				"w1"
+			]
+		},
+		{
+			"name": "drop",
+			"minTier": 0,
+			"params": [
+				"drop",
+				"gap",
+				"roof"
+			]
+		},
+		{
+			"name": "grapple",
+			"minTier": 1,
+			"params": [
+				"dh",
+				"hookAt",
+				"hookH",
+				"roof",
+				"width"
+			]
+		},
+		{
+			"name": "wallrun",
+			"minTier": 1,
+			"params": [
+				"dh",
+				"roof",
+				"width"
+			]
+		},
+		{
+			"name": "chimney",
+			"minTier": 2,
+			"params": [
+				"low",
+				"rise",
+				"roof"
+			]
+		},
+		{
+			"name": "train",
+			"minTier": 2,
+			"params": [
+				"far",
+				"len",
+				"roof"
+			]
+		},
+		{
+			"name": "ramp",
+			"minTier": 1,
+			"params": [
+				"dh",
+				"drop",
+				"gap",
+				"roof",
+				"steep"
+			]
+		},
+		{
+			"name": "chain",
+			"minTier": 2,
+			"params": [
+				"dh",
+				"first",
+				"hookH",
+				"j0",
+				"j1",
+				"j2",
+				"roof",
+				"spacing",
+				"tail",
+				"three"
+			]
+		},
+		{
+			"name": "switchback",
+			"minTier": 2,
+			"params": [
+				"entry",
+				"highAt",
+				"highGap",
+				"lowAt",
+				"lowGap",
+				"roof",
+				"size",
+				"vent",
+				"ventAt",
+				"width"
+			]
+		},
+		{
+			"name": "updraft",
+			"minTier": 1,
+			"params": [
+				"gap",
+				"hasGap",
+				"len",
+				"rise",
+				"roof",
+				"ventAt"
+			]
+		},
+		{
+			"name": "drone",
+			"minTier": 1,
+			"params": [
+				"dx",
+				"dy",
+				"roof",
+				"under",
+				"width"
+			]
+		},
+		{
+			"name": "dronestep",
+			"minTier": 2,
+			"params": [
+				"dh1",
+				"dh2",
+				"gap1",
+				"gap2",
+				"roof"
+			]
+		},
+		{
+			"name": "longtrain",
+			"minTier": 3,
+			"params": [
+				"far",
+				"first",
+				"gap0",
+				"gap1",
+				"gap2",
+				"len",
+				"roof"
+			]
+		}
+	]
+}

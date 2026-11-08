@@ -3,7 +3,7 @@
 // curated, or replaced by seeds from a level-building model; for now they're mostly arbitrary numbers,
 // with 0x0010 picked because it includes a large switchback. Adding or reweighting features in
 // levelgen.ts changes what every seed produces.
-import { TIERS } from './levelgen';
+import { TIERS, generateSegment, recipeSegment, type Recipe, type Segment } from './levelgen.ts';
 
 export const SEED_POOLS: number[][] = [
 	// 0–15 s
@@ -20,10 +20,32 @@ export const SEED_POOLS: number[][] = [
 
 if (SEED_POOLS.length !== TIERS) throw new Error('One seed pool per tier');
 
-/** Picks a seed for this tier, avoiding the ones used recently in this run. */
-export function pickSeed(tier: number, recent: number[]): number {
-	const pool = SEED_POOLS[Math.min(tier, SEED_POOLS.length - 1)];
-	const fresh = pool.filter((s) => !recent.includes(s));
+/** A pool entry: a seed, or a recipe (hand-made, found by search, or written by a model). */
+export type PoolEntry = number | Recipe;
+
+/** Extra recipe pools, one per tier, added by tools such as scripts/runner/search.ts. */
+let extraPools: Recipe[][] = [];
+export function setRecipePools(pools: Recipe[][]) {
+	extraPools = pools;
+}
+
+const keyOf = (e: PoolEntry) => (typeof e === 'number' ? e.toString(16) : (e.id ?? JSON.stringify(e)));
+
+/**
+ * Picks an entry for this tier, avoiding the ones used recently in this run (by key). A tier with
+ * recipes from the search (pools.json) uses those; otherwise it falls back to the seeds above.
+ */
+export function pickEntry(tier: number, recent: string[]): PoolEntry {
+	const t = Math.min(tier, SEED_POOLS.length - 1);
+	const pool: PoolEntry[] = extraPools[t]?.length ? extraPools[t] : SEED_POOLS[t];
+	const fresh = pool.filter((e) => !recent.includes(keyOf(e)));
 	const from = fresh.length ? fresh : pool;
 	return from[Math.floor(Math.random() * from.length)];
 }
+
+/** The segment for a pool entry, placed at (x0, y0). */
+export function entrySegment(e: PoolEntry, tier: number, x0: number, y0: number): Segment {
+	return typeof e === 'number' ? generateSegment(e, tier, x0, y0) : recipeSegment(e, x0, y0);
+}
+
+export { keyOf as entryKey };

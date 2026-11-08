@@ -9,7 +9,9 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "astro": "astro"
+    "astro": "astro",
+    "runner:evaluate": "node scripts/runner/evaluate.ts",
+    "runner:search": "node scripts/runner/search.ts"
   },
   "dependencies": {
     "astro": "^7.4.2",

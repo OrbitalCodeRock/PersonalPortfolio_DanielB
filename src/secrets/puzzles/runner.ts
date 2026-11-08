@@ -6,17 +6,15 @@
 // through buildings, drops and climbs, wall jumps, grapple hooks
 // (press jump in the air near one; press again to let go), trains you can ride, narrow ledges, and
 // wall-run panels (hold jump), air vents that launch you upward, and drones you can grab (glide
-// down; hold jump to dive) or stand on. The level is made of seeded segments: see src/secrets/runner/.
+// down; hold jump to dive) or stand on. The world and physics are in src/secrets/runner/sim.ts and the
+// levels in levelgen.ts; this file draws, plays sound and handles input.
 import { openWindow, solve, chime } from '../ui';
 import { getData, isSolved, setData } from '../progress';
 import {
 	PHYS,
 	START_SPEED,
 	STREET,
-	generateSegment,
-	introSegment,
 	maxSpeedAt,
-	tierAt,
 	type Box,
 	type Facade,
 	type Grapple,
@@ -25,12 +23,16 @@ import {
 	type Slope,
 	type Solid,
 	type Train,
-	type Drone,
 	DRONE,
-	VENT_V,
 } from '../runner/levelgen';
-import { pickSeed } from '../runner/seeds';
-import { createRunnerSound, type Surface } from '../runner/sound';
+import { createSim, overlaps, FLOOR_MARGIN, type DroneState, type TrainState } from '../runner/sim';
+import { createRunnerSound } from '../runner/sound';
+import { setRecipePools } from '../runner/seeds';
+import searchedPools from '../runner/pools.json';
+import type { Recipe } from '../runner/levelgen';
+
+// Level pools found by scripts/runner/search.ts (see src/secrets/runner/).
+setRecipePools((searchedPools as { pools: Recipe[][] }).pools);
 
 const ID = 'now';
 /** Seconds a run has to last to solve the secret. */
@@ -44,17 +46,7 @@ const VIEW_H = CH / SCALE;
 
 const GOLD = '#ffe7a3';
 const CYAN = '#7fe3ff';
-const { G, JUMP_V, JUMP_CUT, W, H } = PHYS;
-const WALL_JUMP = { vx: 8.5, vy: 13 };
-const GRAPPLE_RANGE = 7.5;
-/** The rope reels in at this rate (m/s) down to ROPE_MIN, which speeds up the swing. */
-const REEL = 4;
-const ROPE_MIN = 1.6;
-const STEP_UP = 0.45;
-/** How far below the lowest nearby roof the screen reaches; dropping past it ends the run. */
-const FLOOR_MARGIN = 4.5;
-/** Metres of track between rail joints (one "ka-chunk" each). */
-const RAIL_JOINT = 7;
+const { W, H } = PHYS;
 
 const STYLES = [
 	{ wall: '#283152', edge: '#56639a', lit: '#ffd98a' },
@@ -69,32 +61,11 @@ const CSS = `
 .run-bar p { margin: 0; }
 `;
 
-interface DroneState {
-	home: Drone;
-	/** Centre x and underside y, like Drone. */
-	x: number;
-	y: number;
-	/** Hovering in place, carrying the runner down, or flying back to its spot. */
-	mode: 'hover' | 'carry' | 'return';
-	phase: number;
-}
-
-interface TrainState {
-	def: Train;
-	/** Metres since the wheels last crossed a rail joint (for the clunk sound). */
-	joint: number;
-	nose: number;
-	vx: number;
-	done: boolean;
-}
-
 const hash = (a: number, b: number, c = 0) => {
 	let h = Math.imul(a | 0, 374761393) ^ Math.imul(b | 0, 668265263) ^ Math.imul(c | 0, 2246822519);
 	h = Math.imul(h ^ (h >>> 13), 1274126177);
 	return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 };
-const overlaps = (ax: number, ay: number, aw: number, ah: number, b: Box) =>
-	ax < b.x + b.w && ax + aw > b.x && ay < b.y + b.h && ay + ah > b.y;
 const fmtTime = (t: number) => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, '0')}`;
 
 export function launch(): void {
@@ -135,13 +106,49 @@ export function launch(): void {
 		setData('now-muted', muted);
 		showSound();
 	});
-	/** What you're standing on, for the footstep sound. */
-	let surface: Surface = 'roof';
-	/** How loud the nearest train is (0..1), for its rumble. */
-	let trainLevel = 0;
-	let lastStep = 0;
-
-	// ---- World ---------------------------------------------------------------------------------
+	// ---- World and physics: src/secrets/runner/sim.ts ------------------------------------------
+	let deadFor = 0;
+	let goalFlash = 0;
+	let best = getData<number>('now-best', 0);
+	const seenHints = getData<Record<string, number>>('now-hints', {});
+	let showHint: Record<string, boolean> = {};
+	const sim = createSim({
+		goal: GOAL,
+		onEvent(e) {
+			switch (e.type) {
+				case 'jump':
+					sound.jump(e.kind);
+					break;
+				case 'land':
+					sound.land(e.strength);
+					break;
+				case 'footstep':
+					sound.footstep(e.surface, e.loudness);
+					break;
+				case 'clunk':
+					sound.trainClunk(e.level);
+					break;
+				case 'hint':
+					seenHints[e.key] = (seenHints[e.key] ?? 0) + 1;
+					break;
+				case 'goal':
+					goalFlash = 3;
+					if (!isSolved(ID)) solve(ID);
+					break;
+				case 'die':
+					deadFor = 0;
+					chime('error');
+					if (sim.S.time > best) {
+						best = sim.S.time;
+						setData('now-best', best);
+					}
+					setData('now-hints', seenHints);
+					break;
+			}
+		},
+	});
+	const P = sim.S.P;
+	// The drawing code reads the world through these, refreshed from the sim before each frame.
 	let segments: Segment[] = [];
 	let solids: Solid[] = [];
 	let slopes: Slope[] = [];
@@ -153,584 +160,38 @@ export function launch(): void {
 	let hints: Hint[] = [];
 	let trains: TrainState[] = [];
 	let vents: Box[] = [];
+	let signs: Box[] = [];
 	let drones: DroneState[] = [];
-	let frontier = { x: 0, y: 0 };
-	let recentSeeds: number[] = [];
-
-	function addSegment(seg: Segment) {
-		segments.push(seg);
-		solids.push(...seg.solids);
-		slopes.push(...seg.slopes);
-		facades.push(...seg.facades);
-		hazards.push(...seg.hazards);
-		grapples.push(...seg.grapples);
-		wallRuns.push(...seg.wallRuns);
-		trainDefs.push(...seg.trains);
-		hints.push(...seg.hints);
-		vents.push(...seg.vents);
-		drones.push(...seg.drones.map((d, i) => ({ home: d, x: d.x, y: d.y, mode: 'hover' as const, phase: i * 1.7 + d.x })));
-		frontier = { x: seg.x1, y: seg.endY };
-	}
-
-	function prune(beforeX: number) {
-		if (!segments.length || segments[0].x1 > beforeX) return;
-		segments = segments.filter((s) => s.x1 > beforeX);
-		const keep = <T extends { x: number; w?: number }>(list: T[]) => list.filter((o) => o.x + (o.w ?? 0) > beforeX);
-		solids = keep(solids);
-		facades = keep(facades);
-		hazards = keep(hazards);
-		grapples = keep(grapples);
-		wallRuns = keep(wallRuns);
-		hints = keep(hints);
-		slopes = slopes.filter((s) => s.x1 > beforeX);
-		trainDefs = trainDefs.filter((t) => t.x1 > beforeX);
-		trains = trains.filter((t) => !t.done);
-		vents = keep(vents);
-		drones = drones.filter((d) => d.home.x + DRONE.W > beforeX);
-	}
-
-	// ---- Run state -----------------------------------------------------------------------------
-	type Mode = 'ready' | 'running' | 'dead';
-	let mode: Mode = 'ready';
+	let mode: 'ready' | 'running' | 'dead' = 'ready';
 	let time = 0;
-	let deadFor = 0;
 	let deathCause = '';
-	let goalFlash = 0;
-	let best = getData<number>('now-best', 0);
-	const seenHints = getData<Record<string, number>>('now-hints', {});
-	let showHint: Record<string, boolean> = {};
-	const passedHints = new Set<Hint>();
-
-	const P = {
-		x: 0,
-		y: 0,
-		vx: 0,
-		vy: 0,
-		grounded: true,
-		coyote: 0,
-		buffer: 0,
-		slope: null as Slope | null,
-		train: null as TrainState | null,
-		wall: 0,
-		grapple: null as Grapple | null,
-		grappleT: 0,
-		rope: 0,
-		wallRun: false,
-		anim: 0,
-		/** Running direction: 1 = right, -1 = left. Wall jumps flip it. */
-		dir: 1,
-		/** Furthest right reached this run (the distance shown). */
-		maxX: 0,
-		/** Set when you jump off a train: its extra speed bleeds off faster than a slope's. */
-		trainBoost: false,
-		/** The drone you're hanging from, its forward speed, and whether holding jump dives yet. */
-		drone: null as DroneState | null,
-		droneVx: 0,
-		diveArmed: false,
-		/** Launched by an air vent: letting go of jump doesn't cut the climb short. */
-		launched: false,
-	};
+	function sync() {
+		({ segments, solids, slopes, facades, hazards, grapples, wallRuns, trainDefs, hints, trains, vents, signs, drones, mode, time, deathCause } =
+			sim.S);
+	}
 	const cam = { x: 0, cy: 0 };
-	let held = false;
-	let pressed = false;
-	// Dev testing: force the segments generated next, or freeze the clock.
-	let forced: [number, number][] = [];
-	let frozen = false;
+	/** When the runner last landed on a train (sim time), for the balance animation. */
+	let rideStart = 0;
+	let wasRiding = false;
+	const HINT_KEYS = ['jump', 'hazard', 'slope', 'grapple', 'wallrun', 'chimney', 'train', 'ramp', 'chain', 'switchback', 'updraft', 'drone', 'dronestep', 'longtrain'];
 
 	function reset() {
-		segments = [];
-		solids = [];
-		slopes = [];
-		facades = [];
-		hazards = [];
-		grapples = [];
-		wallRuns = [];
-		trainDefs = [];
-		hints = [];
-		trains = [];
-		vents = [];
-		drones = [];
-		recentSeeds = [];
-		addSegment(introSegment());
-		Object.assign(P, {
-			x: 4,
-			y: 0,
-			vx: 0,
-			vy: 0,
-			grounded: true,
-			coyote: 0,
-			buffer: 0,
-			slope: null,
-			train: null,
-			wall: 0,
-			grapple: null,
-			grappleT: 0,
-			wallRun: false,
-			dir: 1,
-			maxX: 4,
-			trainBoost: false,
-			drone: null,
-			droneVx: 0,
-			diveArmed: false,
-			launched: false,
-		});
-		time = 0;
+		sim.reset();
+		sync();
 		deadFor = 0;
-		mode = 'ready';
-		showHint = Object.fromEntries(
-			['jump', 'hazard', 'slope', 'grapple', 'wallrun', 'chimney', 'train', 'ramp', 'chain', 'switchback', 'updraft', 'drone', 'dronestep'].map((k) => [k, (seenHints[k] ?? 0) < 3]),
-		);
-		passedHints.clear();
+		showHint = Object.fromEntries(HINT_KEYS.map((k) => [k, (seenHints[k] ?? 0) < 3]));
 		cam.x = P.x - VIEW_W * 0.28;
 		cam.cy = P.y + 3;
-		ensureAhead();
 	}
-
-	function ensureAhead() {
-		while (frontier.x < P.x + 110) {
-			const eta = time + Math.max(0, frontier.x - P.x) / Math.max(P.vx, START_SPEED);
-			const f = forced.shift();
-			const tier = f ? f[1] : tierAt(eta);
-			const seed = f ? f[0] : pickSeed(tier, recentSeeds);
-			recentSeeds = [...recentSeeds.slice(-6), seed];
-			addSegment(generateSegment(seed, tier, frontier.x, frontier.y));
-		}
-	}
-
-	// ---- Physics -------------------------------------------------------------------------------
-	const near = (list: Solid[], x0: number, x1: number) => list.filter((s) => s.x < x1 && s.x + s.w > x0);
-
-	function touchingWall(local: Solid[]): number {
-		for (const s of local) {
-			if (!s.climb || s.y + s.h <= P.y + 0.3 || s.y >= P.y + H) continue;
-			// The hanging slab only grips on the side facing the tall building.
-			if (s.kind !== 'slab' && overlaps(P.x + 0.06, P.y + 0.05, W, H - 0.1, s) && s.x >= P.x + W - 0.1) return 1;
-			if (overlaps(P.x - 0.06, P.y + 0.05, W, H - 0.1, s) && s.x + s.w <= P.x + 0.1) return -1;
-		}
-		return 0;
-	}
-
-	function nearestGrapple(): Grapple | null {
-		let bestG: Grapple | null = null;
-		let bestD = GRAPPLE_RANGE;
-		const cx = P.x + W / 2;
-		const cy = P.y + H / 2;
-		for (const g of grapples) {
-			if ((g.x - cx) * P.dir < -1.5) continue;
-			const d = Math.hypot(g.x - cx, g.y - cy);
-			if (d < bestD) {
-				bestD = d;
-				bestG = g;
-			}
-		}
-		return bestG;
-	}
-
-	function die(cause: string) {
-		if (mode !== 'running') return;
-		mode = 'dead';
-		deathCause = cause;
-		deadFor = 0;
-		chime('error');
-		if (time > best) {
-			best = time;
-			setData('now-best', best);
-		}
-		setData('now-hints', seenHints);
-	}
-
-	function tryJump(local: Solid[]) {
-		// Hanging from a drone, jump only matters held down (to dive); see step().
-		if (P.drone) {
-			P.buffer = 0;
-			return;
-		}
-		if (P.grapple) {
-			P.grapple = null;
-			P.buffer = 0;
-			return;
-		}
-		if (P.grounded || P.coyote > 0) {
-			if (P.train) P.trainBoost = true;
-			sound.jump();
-			P.vy = JUMP_V;
-			P.grounded = false;
-			P.coyote = 0;
-			P.buffer = 0;
-			P.slope = null;
-			P.train = null;
-			return;
-		}
-		const wall = touchingWall(local);
-		if (wall) {
-			// Kicking off a wall sends you, and your running direction, the other way.
-			P.vx = -wall * WALL_JUMP.vx;
-			P.vy = WALL_JUMP.vy;
-			sound.jump('kick');
-			P.dir = -wall;
-			P.buffer = 0;
-			return;
-		}
-		const g = nearestGrapple();
-		if (g) {
-			P.grapple = g;
-			P.grappleT = 0;
-			P.rope = Math.hypot(g.x - (P.x + W / 2), g.y - (P.y + H / 2));
-			P.buffer = 0;
-		}
-		// Otherwise the press stays buffered briefly, so a jump just before landing still counts.
-	}
-
-	function step(dt: number) {
-		if (mode !== 'running' || frozen) return;
-		time += dt;
-		const cap = maxSpeedAt(time);
-		const local = near(solids, P.x - 6, P.x + 6);
-
-		// Trains set off as the runner reaches the viaduct, and vanish into the far tunnel.
-		for (const def of trainDefs) {
-			if (P.x + W / 2 >= def.triggerX && !trains.some((t) => t.def === def)) {
-				trains.push({ def, nose: def.startX, vx: Math.max(P.vx, START_SPEED) + def.boost, done: false, joint: 0 });
-			}
-		}
-		trainLevel = 0;
-		for (const t of trains) {
-			t.nose += t.vx * dt;
-			if (t.nose - t.def.len > t.def.endX) t.done = true;
-			if (t.done) continue;
-			// How loud it is here: full on top of it, fading with distance from the part that's out of the
-			// tunnels (and silent once it's gone into the far one).
-			const rear = Math.max(t.nose - t.def.len, t.def.x0);
-			const front = Math.min(t.nose, t.def.endX);
-			if (front <= rear) continue;
-			const cx = P.x + W / 2;
-			const dist = Math.max(0, rear - cx, cx - front) + Math.max(0, Math.abs(P.y - t.def.top) - 2);
-			const level = P.train === t ? 1 : Math.max(0, 1 - dist / 28) * Math.min(1, (front - rear) / 6);
-			trainLevel = Math.max(trainLevel, level);
-			t.joint += t.vx * dt;
-			if (t.joint > RAIL_JOINT) {
-				t.joint -= RAIL_JOINT;
-				sound.trainClunk(level);
-			}
-		}
-		// Drones bob in place, or fly back to their spot after carrying you down.
-		for (const d of drones) {
-			if (d.mode === 'hover') {
-				d.x = d.home.x;
-				d.y = d.home.y + Math.sin(time * 2.2 + d.phase) * 0.22;
-			} else if (d.mode === 'return') {
-				const dx = d.home.x - d.x;
-				const dy = d.home.y - d.y;
-				const dist = Math.hypot(dx, dy);
-				if (dist < 0.15) d.mode = 'hover';
-				else {
-					d.x += (dx / dist) * Math.min(dist, 6 * dt);
-					d.y += (dy / dist) * Math.min(dist, 6 * dt);
-				}
-			}
-		}
-
-		P.coyote = P.grounded ? 0.1 : Math.max(0, P.coyote - dt);
-		P.buffer = Math.max(0, P.buffer - dt);
-		if (pressed) {
-			pressed = false;
-			P.buffer = 0.13;
-		}
-		if (P.buffer > 0) tryJump(local);
-
-		// Horizontal speed.
-		if (P.drone) {
-			// Hanging from a drone: it flies you forward at its own steady speed.
-			P.vx = P.droneVx;
-		} else if (P.grapple) {
-			// Swinging: gravity and the rope do the work (see below).
-		} else if (!P.grounded && !P.wallRun && P.vx * P.dir >= 0 && P.vx * P.dir < 4) {
-			// Nearly stopped in the air (e.g. jumping up beside a wall): drift forward so you can get onto it.
-			P.vx += 10 * P.dir * dt;
-		} else if (P.train) {
-			P.vx += (P.train.vx + P.dir - P.vx) * Math.min(1, dt * 8);
-		} else if (P.grounded || P.wallRun) {
-			// Speed along the running direction. Back up to speed quickly after a stop; the cap itself
-			// rises slowly with time.
-			let v = P.vx * P.dir;
-			if (v < 0) v += 30 * dt;
-			else if (v < cap) v = Math.min(cap, v + (v < cap - 3 ? 8 : 2) * dt);
-			else {
-				// Over the cap: a slope's burst fades over a second or two, a train's within about half a second.
-				v = Math.max(cap, v - (P.trainBoost ? 9 : 3) * dt);
-			}
-			if (v <= cap) P.trainBoost = false;
-			P.vx = v * P.dir;
-			if (P.slope) {
-				// Sliding downhill (slopes fall to the right): a burst of speed over the cap that fades once
-				// you're off. Running up one slows you.
-				const s = P.slope;
-				const sin = (s.y0 - s.y1) / Math.hypot(s.x1 - s.x0, s.y0 - s.y1);
-				P.vx += G * sin * 0.6 * dt;
-				if (P.dir === 1) P.vx = Math.min(cap + (s.boost ?? 4), P.vx);
-			}
-		}
-
-		// Vertical speed.
-		P.wallRun =
-			!P.grounded &&
-			held &&
-			!P.grapple &&
-			P.vy <= 2 &&
-			wallRuns.some((z) => overlaps(P.x, P.y, W, H, z));
-		if (P.drone) {
-			// Gliding down with the drone; hold jump (pressed after you grabbed it) to dive.
-			if (!held) P.diveArmed = true;
-			P.vy = P.diveArmed && held ? -DRONE.DIVE : -DRONE.GLIDE;
-		} else if (P.wallRun) P.vy = 0;
-		else P.vy -= G * dt;
-		if (P.vy <= 0) P.launched = false;
-		if (!held && P.vy > JUMP_CUT && !P.grapple && !P.launched) P.vy = JUMP_CUT;
-		// Air vents launch you when you run (or drop) onto them.
-		if (!P.drone && P.vy <= 3) {
-			for (const z of vents) {
-				if (P.x < z.x + z.w && P.x + W > z.x && P.y >= z.y - 0.1 && P.y <= z.y + 1.2) {
-					P.vy = VENT_V;
-					sound.jump('vent');
-					P.launched = true;
-					P.grounded = false;
-					P.coyote = 0;
-					P.slope = null;
-					chime('hover');
-					break;
-				}
-			}
-		}
-		P.wall = P.grounded || P.drone ? 0 : touchingWall(local);
-		if (P.wall && P.vy < -2.5) P.vy = -2.5;
-		// Ledge grab: on a climbing wall with your feet within a metre of its top, pull yourself up.
-		if (P.wall) {
-			const w = P.wall;
-			const ledge = local.find(
-				(s) =>
-					s.climb &&
-					s.kind === 'roof' &&
-					Math.abs((w === 1 ? s.x : s.x + s.w) - (w === 1 ? P.x + W : P.x)) < 0.12 &&
-					s.y + s.h - P.y <= 1.1 &&
-					s.y + s.h > P.y,
-			);
-			if (ledge && P.vy <= 4) {
-				P.y = ledge.y + ledge.h;
-				P.x = w === 1 ? ledge.x + 0.05 : ledge.x + ledge.w - W - 0.05;
-				P.vy = 0;
-				P.dir = w;
-				P.vx = w * Math.max(P.vx * w, START_SPEED * 0.6);
-				P.wall = 0;
-			}
-		}
-		P.vy = Math.max(P.vy, -32);
-
-		// The grapple is a rope that reels in: it keeps you on a circle around the hook, so you swing under
-		// it and get thrown up and forward. It lets go once you've swung past the hook and up near its
-		// height (or on a second press of jump, or after a while).
-		if (P.grapple) {
-			P.grappleT += dt;
-			const dx = P.x + W / 2 - P.grapple.x;
-			const dy = P.y + H / 2 - P.grapple.y;
-			const d = Math.hypot(dx, dy);
-			// The rope never goes slack (no jolt when it catches); it only shortens.
-			P.rope = Math.max(ROPE_MIN, Math.min(P.rope - REEL * dt, d));
-			const ahead = dx * P.dir;
-			const swungUp = ahead > 0 && P.vy > 0 && (ahead > 0.6 * d || dy > -1.2);
-			if (swungUp) {
-				// Thrown off the top of the swing.
-				P.grapple = null;
-				P.vx = P.dir * Math.max(P.vx * P.dir, cap);
-				P.vy = Math.max(P.vy, 7);
-			} else if (P.grappleT > 1.8) P.grapple = null;
-			else if (d > P.rope) {
-				const nx = dx / d;
-				const ny = dy / d;
-				P.x -= nx * (d - P.rope);
-				P.y -= ny * (d - P.rope);
-				const out = P.vx * nx + P.vy * ny;
-				if (out > 0) {
-					P.vx -= out * nx;
-					P.vy -= out * ny;
-				}
-				const sp = Math.hypot(P.vx, P.vy);
-				if (sp > 26) {
-					P.vx *= 26 / sp;
-					P.vy *= 26 / sp;
-				}
-			}
-		}
-
-		// Move along x, then y, resolving against solids.
-		const prevY = P.y;
-		const wasGrounded = P.grounded;
-		const wasSlope = P.slope;
-		let hitWall = false;
-		P.x += P.vx * dt;
-		for (const s of local) {
-			if (!overlaps(P.x, P.y, W, H, s)) continue;
-			const top = s.y + s.h;
-			if (s.kind !== 'ceiling' && top - P.y <= STEP_UP && (wasGrounded || P.vy <= 2)) {
-				P.y = top;
-				P.vy = 0;
-				continue;
-			}
-			const fromLeft = P.x + W / 2 < s.x + s.w / 2;
-			if (s.kind === 'crate' && fromLeft && wasGrounded) {
-				// Running forward into a crate, you vault onto it (losing a little speed). Only its back face,
-				// the one you meet running the wrong way, turns you around.
-				P.y = top;
-				P.vy = 0;
-				P.vx *= 0.85;
-				continue;
-			}
-			if (fromLeft) P.x = s.x - W;
-			else P.x = s.x + s.w;
-			P.vx = 0;
-			hitWall = true;
-			// Running into an ordinary wall turns you around; at a climbing wall you stop so you can climb.
-			if (wasGrounded && !s.climb && (fromLeft ? 1 : -1) === P.dir) P.dir = -P.dir;
-		}
-		const fallV = P.vy;
-		P.y += P.vy * dt;
-		P.grounded = false;
-		P.slope = null;
-		P.train = null;
-		for (const s of local) {
-			if (!overlaps(P.x, P.y, W, H, s)) continue;
-			const top = s.y + s.h;
-			if (P.vy <= 0 && prevY >= top - 0.25) {
-				P.y = top;
-				P.vy = 0;
-				P.grounded = true;
-				surface = s.kind === 'roof' || s.kind === 'ceiling' ? 'roof' : 'metal';
-			} else if (P.vy > 0 && prevY + H <= s.y + 0.25) {
-				// A hair below the underside, so you don't snag on its edge as you move away.
-				P.y = s.y - H - 0.002;
-				P.vy = 0;
-				P.grapple = null;
-			} else if (top - P.y < 0.5) {
-				P.y = top;
-				P.vy = 0;
-				P.grounded = true;
-				surface = s.kind === 'roof' || s.kind === 'ceiling' ? 'roof' : 'metal';
-			}
-		}
-		const cx = P.x + W / 2;
-		for (const s of slopes) {
-			if (cx < s.x0 || cx > s.x1) continue;
-			const sy = s.y0 + ((cx - s.x0) / (s.x1 - s.x0)) * (s.y1 - s.y0);
-			const snap = wasSlope === s || wasGrounded ? 0.6 : 0.05;
-			if (P.vy <= 0 && P.y <= sy + snap && prevY >= sy - 0.6) {
-				P.y = sy;
-				P.vy = 0;
-				P.grounded = true;
-				P.slope = s;
-				surface = 'roof';
-			}
-		}
-		for (const t of trains) {
-			if (t.done) continue;
-			const rear = Math.max(t.nose - t.def.len, t.def.x0);
-			const front = Math.min(t.nose, t.def.endX);
-			if (P.x + W <= rear || P.x >= front) continue;
-			if (P.vy <= 0 && prevY >= t.def.top - 0.25 && P.y <= t.def.top) {
-				P.y = t.def.top;
-				P.vy = 0;
-				P.grounded = true;
-				P.train = t;
-				surface = 'train';
-				if (!wasGrounded) P.vx = t.vx + P.dir;
-			}
-		}
-		// Drones: land on top and it's a small platform; meet it from below or the side and you grab on.
-		if (P.drone) {
-			const d = P.drone;
-			if (P.grounded || hitWall) {
-				// Let go on touching down (and run on), or on hitting a wall.
-				d.mode = 'return';
-				P.drone = null;
-			} else {
-				d.x = P.x + W / 2;
-				d.y = P.y + H + 0.1;
-			}
-		} else {
-			for (const d of drones) {
-				if (d.mode === 'carry') continue;
-				const box = { x: d.x - DRONE.W / 2, y: d.y, w: DRONE.W, h: DRONE.H };
-				if (!overlaps(P.x, P.y, W, H, box)) continue;
-				const top = d.y + DRONE.H;
-				if (P.vy <= 0 && prevY >= top - 0.35) {
-					P.y = top;
-					P.vy = 0;
-					P.grounded = true;
-					surface = 'metal';
-				} else {
-					P.drone = d;
-					d.mode = 'carry';
-					P.droneVx = P.dir * DRONE.SPEED;
-					P.diveArmed = !held;
-					P.grapple = null;
-					P.launched = false;
-					P.x = d.x - W / 2;
-					P.y = d.y - 0.1 - H;
-					P.vy = 0;
-				}
-				break;
-			}
-		}
-		if (P.grounded) P.grapple = null;
-		if (!wasGrounded && P.grounded && fallV < -9) sound.land((-fallV - 9) / 18);
-		P.anim += Math.abs(P.vx) * dt * (P.grounded || P.wallRun ? 1.5 : 0.4);
-		// A footstep each time a foot comes down (the run cycle is drawn from P.anim; see drawRunner).
-		const stepIndex = Math.floor((P.anim * 1.1) / Math.PI);
-		if (stepIndex !== lastStep) {
-			lastStep = stepIndex;
-			if (P.grounded && Math.abs(P.vx) > 1) sound.footstep(surface, Math.min(1, 0.6 + Math.abs(P.vx) / 30));
-			else if (P.wallRun) sound.footstep('metal', 0.5);
-		}
-		P.maxX = Math.max(P.maxX, P.x);
-
-		// Dangers.
-		for (const z of hazards) if (overlaps(P.x + 0.08, P.y, W - 0.16, H - 0.1, z)) die('A sparking vent got you.');
-		if (P.y + H < floorAt() - FLOOR_MARGIN) die('You fell.');
-
-		// Hints count as seen once you pass them.
-		for (const hnt of hints) {
-			if (!passedHints.has(hnt) && P.x > hnt.x) {
-				passedHints.add(hnt);
-				seenHints[hnt.key] = (seenHints[hnt.key] ?? 0) + 1;
-			}
-		}
-
-		if (time >= GOAL && !isSolved(ID)) {
-			goalFlash = 3;
-			solve(ID);
-		} else if (time >= GOAL && time - dt < GOAL) goalFlash = 3;
-
-		ensureAhead();
-		prune(Math.min(P.x, P.maxX - 20) - 50);
-	}
-
-	/** The lowest surface just around and ahead of the runner; dropping well below it is a fall. */
-	function floorAt(): number {
-		const x0 = P.x - (P.dir === 1 ? 2 : VIEW_W * 0.7);
-		const x1 = P.x + (P.dir === 1 ? VIEW_W * 0.7 : 2);
-		let lo = Infinity;
-		for (const s of solids) if (s.kind !== 'ceiling' && s.x < x1 && s.x + s.w > x0) lo = Math.min(lo, s.y + s.h);
-		for (const t of trains) {
-			if (t.done) continue;
-			const rear = Math.max(t.nose - t.def.len, t.def.x0);
-			const front = Math.min(t.nose, t.def.endX);
-			if (front > rear && front > x0 && rear < x1) lo = Math.min(lo, t.def.top);
-		}
-		return lo === Infinity ? P.y : lo;
-	}
+	const floorAt = () => sim.floorAt();
+	const nearestGrapple = () => sim.nearestGrapple();
 
 	function updateCamera(dt: number) {
 		// Look ahead in the running direction, easing across when it flips.
 		const ahead = Math.min(5, Math.max(0, (Math.abs(P.vx) - START_SPEED) * 0.35));
-		const tx = P.dir === 1 ? P.x - VIEW_W * 0.28 - ahead : P.x - VIEW_W * 0.72 + ahead;
+		// Riding a train, sit near the left edge so most of the view is ahead (signs, the far building).
+		const lead = P.train ? VIEW_W * 0.15 : VIEW_W * 0.28 + ahead;
+		const tx = P.dir === 1 ? P.x - lead : P.x - VIEW_W + lead;
 		cam.x += (tx - cam.x) * Math.min(1, dt * 3);
 		const floor = floorAt();
 		let target = P.y + 2.6;
@@ -821,6 +282,12 @@ export function launch(): void {
 			ctx.lineTo(sx(def.x1), sy(deck));
 			ctx.stroke();
 		}
+		// Railway sign poles stand beside the track, behind the train.
+		ctx.fillStyle = '#4b4f63';
+		for (const z of signs) {
+			if (!visible(z.x - 1, z.x + 1)) continue;
+			ctx.fillRect(sx(z.x + z.w / 2 - 0.06), sy(z.y), 0.12 * SCALE, 3.1 * SCALE);
+		}
 		for (const t of trains) {
 			if (t.done) continue;
 			// Only ever drawn between the two tunnel mouths: it rolls out of one and is gone into the other.
@@ -848,6 +315,38 @@ export function launch(): void {
 			ctx.fillStyle = '#fff6c8';
 			ctx.fillRect(sx(t.nose - 0.35), sy(top - 1.9), 0.3 * SCALE, 0.3 * SCALE);
 			ctx.restore();
+		}
+		// The sign boards, in front of the train: red and white stripes at body height.
+		for (const z of signs) {
+			if (!visible(z.x - 1, z.x + 1)) continue;
+			const x0 = sx(z.x);
+			const y0 = sy(z.y + z.h);
+			const w = z.w * SCALE;
+			const hgt = z.h * SCALE;
+			ctx.save();
+			ctx.beginPath();
+			ctx.rect(x0, y0, w, hgt);
+			ctx.clip();
+			ctx.fillStyle = '#f2f2f5';
+			ctx.fillRect(x0, y0, w, hgt);
+			ctx.fillStyle = '#d83a3a';
+			for (let k = -2; k < 8; k++) {
+				ctx.beginPath();
+				ctx.moveTo(x0, y0 + k * 9);
+				ctx.lineTo(x0 + w, y0 + k * 9 - 9);
+				ctx.lineTo(x0 + w, y0 + k * 9 - 4);
+				ctx.lineTo(x0, y0 + k * 9 + 5);
+				ctx.closePath();
+				ctx.fill();
+			}
+			ctx.restore();
+			ctx.strokeStyle = '#1b1b24';
+			ctx.lineWidth = 2;
+			ctx.strokeRect(x0, y0, w, hgt);
+			ctx.fillStyle = '#ffcf5a';
+			ctx.beginPath();
+			ctx.arc(x0 + w / 2, y0 - 4, 3, 0, Math.PI * 2);
+			ctx.fill();
 		}
 	}
 
@@ -1148,8 +647,21 @@ export function launch(): void {
 		const sliding = P.slope && P.vx > maxSpeedAt(time) + 0.5;
 		const air = !P.grounded && !P.wallRun && !P.drone;
 		const hanging = !!P.drone;
-		const lean = sliding ? 0.15 : hanging ? 0.04 : Math.min(0.45, 0.12 + Math.abs(P.vx) * 0.018);
-		const hipY = sliding ? -0.6 * u : -0.85 * u;
+		const legSpeed = P.train ? Math.abs(P.vx - P.train.vx) : Math.abs(P.vx);
+		// 0 = walking, 1 = running, blended between about 2 and 6 m/s of leg speed.
+		const gait = Math.max(0, Math.min(1, (legSpeed - 2) / 4));
+		const mix = (walk: number, run: number) => walk + (run - walk) * gait;
+		const riding = !!P.train && P.grounded;
+		// Boarding a train: land in a crouch with arms flung out, catch your balance, then settle with
+		// arms at your sides. `settle` runs 0 → 1 over about 0.6 s after landing; `crouch` over 0.35 s.
+		if (riding && !wasRiding) rideStart = time;
+		wasRiding = riding;
+		const rideT = riding ? time - rideStart : 0;
+		const ease = (k: number) => 1 - (1 - Math.max(0, Math.min(1, k))) ** 3;
+		const settle = ease((rideT - 0.15) / 0.6);
+		const crouch = ease(rideT / 0.35);
+		const lean = sliding ? -0.35 : hanging || riding ? 0.04 : mix(0.04, Math.min(0.45, 0.12 + legSpeed * 0.018));
+		const hipY = sliding ? -0.38 * u : riding ? (-0.62 - 0.18 * crouch) * u : -0.85 * u;
 		const neck = { x: Math.sin(lean) * 0.5 * u, y: hipY - Math.cos(lean) * 0.5 * u };
 		const ph = P.anim * 1.1;
 		const limb = (ox: number, oy: number, a1: number, l1: number, a2: number, l2: number) => {
@@ -1165,13 +677,23 @@ export function launch(): void {
 			return { x: hx, y: hy };
 		};
 		// Legs.
-		if (hanging) {
+		if (riding) {
+			// Feet apart; knees deeply bent on landing, straightening as you settle; a slight sway.
+			const sway = Math.sin(time * 3) * 0.04 * settle;
+			const knee = 0.55 * (1 - crouch);
+			limb(0, hipY, 0.4 + knee * 0.6 + sway, 0.43, 0.1 - knee + sway, 0.43);
+			limb(0, hipY, -0.3 + knee * 0.3 + sway, 0.43, -0.06 - knee + sway, 0.43);
+		} else if (hanging) {
 			const sway = Math.sin(time * 4) * 0.12;
 			limb(0, hipY, 0.25 + sway, 0.43, 0.05 + sway, 0.43);
 			limb(0, hipY, -0.1 + sway, 0.43, -0.25 + sway, 0.43);
 		} else if (sliding) {
-			limb(0, hipY, 1.2, 0.45, 1.5, 0.45);
-			limb(0, hipY, 0.5, 0.42, 0.2, 0.42);
+			// A baseball slide: legs nearly straight, stretched out ahead and down onto the slope.
+			const s = P.slope!;
+			const fall = Math.atan2(s.y0 - s.y1, s.x1 - s.x0);
+			const leg = Math.PI / 2 - fall - 0.32;
+			limb(0, hipY, leg, 0.45, leg + 0.05, 0.45);
+			limb(0, hipY, leg - 0.18, 0.43, leg - 0.1, 0.43);
 		} else if (wallSide) {
 			limb(0, hipY, 0.6 * wallSide, 0.42, -0.1 * wallSide, 0.42);
 			limb(0, hipY, 0.2 * wallSide, 0.42, 0.3 * wallSide, 0.42);
@@ -1179,9 +701,13 @@ export function launch(): void {
 			limb(0, hipY, 0.9, 0.42, -0.4, 0.42);
 			limb(0, hipY, -0.3, 0.42, 0.5, 0.42);
 		} else {
-			const a = Math.sin(ph) * 0.8;
-			limb(0, hipY, a, 0.43, a - 0.7 - Math.max(0, Math.cos(ph)) * 0.6, 0.43);
-			limb(0, hipY, -a, 0.43, -a - 0.7 - Math.max(0, -Math.cos(ph)) * 0.6, 0.43);
+			// Walking: short strides on nearly straight legs. Running: long strides, knees lifting high.
+			// Strides shorten further at a crawl (creeping along a train roof).
+			const a = Math.sin(ph) * mix(0.42, 0.8) * Math.min(1, 0.45 + legSpeed / 3);
+			const bend = mix(0.12, 0.7);
+			const lift = mix(0.35, 0.6);
+			limb(0, hipY, a, 0.43, a - bend - Math.max(0, Math.cos(ph)) * lift, 0.43);
+			limb(0, hipY, -a, 0.43, -a - bend - Math.max(0, -Math.cos(ph)) * lift, 0.43);
 		}
 		// Body and head.
 		ctx.beginPath();
@@ -1192,7 +718,15 @@ export function launch(): void {
 		ctx.arc(neck.x + Math.sin(lean) * 0.2 * u, neck.y - 0.22 * u, 0.17 * u, 0, Math.PI * 2);
 		ctx.fill();
 		// Arms.
-		if (hanging) {
+		if (riding) {
+			// Flung out wide on landing, wobbling as you catch your balance, then down at your sides.
+			const wobble = Math.sin(rideT * 16) * 0.3 * (1 - settle);
+			const out = 1.55 + (0.1 - 1.55) * settle;
+			// Elbows bend naturally: out wide the forearms droop toward the ground; hanging, they bend a
+			// little forward.
+			limb(neck.x, neck.y, out + wobble, 0.33, out - 0.3 + 0.5 * settle + wobble * 1.5, 0.3);
+			limb(neck.x, neck.y, -out + wobble, 0.33, -out + 0.3 - 0.1 * settle + wobble * 1.5, 0.3);
+		} else if (hanging) {
 			// Both hands up on the drone's handlebar.
 			const barY = -(H + 0.02) * u;
 			for (const hx of [-0.14, 0.14]) {
@@ -1227,13 +761,20 @@ export function launch(): void {
 			ctx.arc(hand.x, hand.y, 0.09 * u, 0, Math.PI * 2);
 			ctx.fill();
 			ctx.restore();
+		} else if (sliding) {
+			// One arm back for balance, the other forward.
+			limb(neck.x, neck.y, -1.0, 0.33, -0.7, 0.3);
+			limb(neck.x, neck.y, 1.3, 0.33, 1.7, 0.3);
 		} else if (air) {
 			limb(neck.x, neck.y, -2.4, 0.33, -2.9, 0.3);
 			limb(neck.x, neck.y, 2.2, 0.33, 2.8, 0.3);
 		} else {
-			const a = Math.sin(ph) * 0.9;
-			limb(neck.x, neck.y, -a + 0.2, 0.33, -a + 1.6, 0.3);
-			limb(neck.x, neck.y, a + 0.2, 0.33, a + 1.6, 0.3);
+			// Walking: arms hang and swing gently. Running: elbows bent, pumping.
+			const a = Math.sin(ph) * mix(0.4, 0.9) * Math.min(1, 0.45 + legSpeed / 3);
+			const up = mix(0.05, 0.2);
+			const elbow = mix(0.25, 1.4);
+			limb(neck.x, neck.y, -a + up, 0.33, -a + up + elbow, 0.3);
+			limb(neck.x, neck.y, a + up, 0.33, a + up + elbow, 0.3);
 		}
 		ctx.restore();
 	}
@@ -1291,11 +832,11 @@ export function launch(): void {
 		});
 		// The segment underfoot (useful when judging seeds).
 		const seg = segments.find((s) => P.x >= s.x0 && P.x < s.x1);
-		if (seg && seg.seed !== 1) {
+		if (seg && seg.label) {
 			ctx.font = '12px ui-monospace, Consolas, monospace';
 			ctx.textAlign = 'left';
 			ctx.fillStyle = 'rgba(238, 240, 255, 0.45)';
-			ctx.fillText(`segment ${seg.seed.toString(16)} · ${seg.tier * 15}s band`, 12, CH - 12);
+			ctx.fillText(`segment ${seg.label} · ${seg.tier * 15}s band`, 12, CH - 12);
 		}
 		if (goalFlash > 0) {
 			scaled(CW / 2, 130, () => {
@@ -1364,20 +905,22 @@ export function launch(): void {
 
 	// ---- Input and loop ------------------------------------------------------------------------
 	function press() {
+		sync();
 		if (mode === 'ready') {
-			mode = 'running';
+			sim.start();
 		} else if (mode === 'dead') {
 			if (deadFor > 0.6) {
 				reset();
-				mode = 'running';
+				sim.start();
 			}
+			sync();
 			return;
 		}
-		held = true;
-		pressed = true;
+		sim.press();
+		sync();
 	}
 	function release() {
-		held = false;
+		sim.release();
 	}
 	const JUMP_KEYS = new Set(['Space', 'ArrowUp', 'KeyW']);
 	const onKeyDown = (e: KeyboardEvent) => {
@@ -1412,9 +955,10 @@ export function launch(): void {
 		last = now;
 		acc += dt;
 		while (acc >= STEP) {
-			step(STEP);
+			sim.step(STEP);
 			acc -= STEP;
 		}
+		sync();
 		if (mode === 'dead') deadFor += dt;
 		goalFlash = Math.max(0, goalFlash - dt * 0.6);
 		// Wind rises with speed, swells during a boost (over the speed cap) and while falling fast.
@@ -1424,9 +968,9 @@ export function launch(): void {
 			// rumble come through.
 			const over = P.train ? 0 : Math.max(0, speed - maxSpeedAt(time));
 			const wind = Math.max(0, (speed - 11) / 20) + Math.min(0.6, over / 6) + Math.max(0, (-P.vy - 12) / 40);
-			sound.setWind(wind * (1 - 0.75 * trainLevel));
+			sound.setWind(wind * (1 - 0.75 * sim.S.trainLevel));
 			sound.setScrape(P.wallRun);
-			sound.setRumble(trainLevel);
+			sound.setRumble(sim.S.trainLevel);
 		} else {
 			sound.setWind(0);
 			sound.setScrape(false);
@@ -1453,31 +997,34 @@ export function launch(): void {
 	if (import.meta.env.DEV) {
 		(window as unknown as { __runner: unknown }).__runner = {
 			P,
+			core: sim,
 			get time() {
-				return time;
+				return sim.S.time;
 			},
 			set time(t: number) {
-				time = t;
+				sim.S.time = t;
 			},
 			get mode() {
-				return mode;
+				return sim.S.mode;
 			},
 			get segments() {
-				return segments;
+				return sim.S.segments;
 			},
 			press,
 			release,
 			reset,
-			/** Restart with these [seed, tier] segments right after the intro roof. */
+			/** Restart with these [seed or recipe, tier] segments right after the intro roof. */
 			force(list: [number, number][]) {
-				forced = [...list];
+				sim.S.forced = [...list];
 				reset();
 			},
 			set frozen(v: boolean) {
-				frozen = v;
+				sim.S.frozen = v;
 			},
+			cam,
 			/** Draw one frame now (the loop pauses while the tab is hidden). */
 			render() {
+				sync();
 				for (let i = 0; i < 30; i++) updateCamera(1 / 30);
 				draw(performance.now());
 			},
@@ -1485,11 +1032,11 @@ export function launch(): void {
 			sim(seconds: number, control: (dt: number) => void) {
 				for (let i = 0; i < seconds * 120; i++) {
 					control(1 / 120);
-					step(1 / 120);
+					sim.step(1 / 120);
+					sync();
 					if (mode === 'dead') deadFor += 1 / 120;
 				}
 			},
-			cam,
 		};
 	}
 }
