@@ -13,6 +13,12 @@ interface Props {
 const { title, description = 'Personal portfolio of Daniel Beyer: web development, game development, and machine learning.' } = Astro.props;
 const fullTitle = title ? `${title} · Daniel Beyer` : 'Daniel Beyer';
 const path = Astro.url.pathname;
+// The Leaderboards tab is for the secret puzzle hunt: hidden until the visitor solves a secret (see the
+// script below). It sits in alphabetical order with the rest.
+const navLinks = [
+	...sections.map((s) => ({ href: s.href, title: s.title, secret: false })),
+	{ href: '/leaderboard', title: 'Leaderboards', secret: true },
+].sort((a, b) => a.title.localeCompare(b.title));
 ---
 
 <html lang="en">
@@ -37,8 +43,13 @@ const path = Astro.url.pathname;
 			<a class="logo" href="/">DB</a>
 			<nav aria-label="Main">
 				{
-					sections.map((s) => (
-						<a href={s.href} aria-current={path.startsWith(s.href) ? 'page' : undefined}>
+					navLinks.map((s) => (
+						<a
+							href={s.href}
+							aria-current={path.startsWith(s.href) ? 'page' : undefined}
+							class={s.secret ? 'nav-secret' : undefined}
+							hidden={s.secret}
+						>
 							{s.title}
 						</a>
 					))
@@ -60,9 +71,16 @@ const path = Astro.url.pathname;
 
 <script>
 	import { initSecrets } from '../secrets/trigger';
-	import { update } from '../secrets/progress';
+	import { solvedCount, update } from '../secrets/progress';
 
 	initSecrets();
+	// The Leaderboards tab appears once a secret is solved, and right away when one is.
+	const showSecretNav = () => {
+		const show = solvedCount() > 0;
+		document.querySelectorAll<HTMLElement>('.nav-secret').forEach((a) => (a.hidden = !show));
+	};
+	document.addEventListener('astro:page-load', showSecretNav);
+	document.addEventListener('secrets:solved', showSecretNav);
 	// The footer toggle for the theme unlocked by finishing the puzzle hunt.
 	document.addEventListener('click', (e) => {
 		if (!(e.target as Element).closest?.('.secret-theme-toggle')) return;
@@ -103,6 +121,9 @@ const path = Astro.url.pathname;
 	nav a:hover,
 	nav a[aria-current='page'] {
 		color: var(--text);
+	}
+	nav a[hidden] {
+		display: none;
 	}
 	main {
 		padding-block: 32px 80px;

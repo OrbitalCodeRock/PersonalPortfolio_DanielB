@@ -1,0 +1,51 @@
+---
+// The secret puzzle hunt's leaderboards (src/secrets/boards.ts): one board per secret, "Every secret",
+// and the rooftop runner's run times. The nav tab only appears once a visitor has solved a secret, and
+// the page keeps its boards to itself until then too.
+import ContentPage from '../layouts/ContentPage.astro';
+---
+
+<ContentPage title="Leaderboards" intro="Who found what, and in what order.">
+	<div class="lb-page" data-lb-root></div>
+	<p class="lb-page-status secret-hint" aria-live="polite" hidden></p>
+	<p class="lb-page-locked" hidden>Nothing to see here yet. Some of the words on this site aren’t what they seem.</p>
+</ContentPage>
+
+<script>
+	import { renderBoards, type BoardId } from '../secrets/boards';
+	import { solvedCount } from '../secrets/progress';
+
+	document.addEventListener('astro:page-load', () => {
+		const root = document.querySelector<HTMLElement>('[data-lb-root]');
+		if (!root) return;
+		const status = document.querySelector<HTMLElement>('.lb-page-status')!;
+		if (solvedCount() === 0) {
+			document.querySelector<HTMLElement>('.lb-page-locked')!.hidden = false;
+			return;
+		}
+		const board = (new URLSearchParams(location.search).get('board') ?? 'all') as BoardId | 'runner';
+		renderBoards(
+			root,
+			{
+				setStatus(text) {
+					status.textContent = text;
+					status.hidden = !text;
+				},
+			},
+			board,
+		);
+	});
+</script>
+
+<style>
+	.lb-page {
+		max-width: 640px;
+		padding: 18px;
+		border: 1px solid var(--border);
+		border-radius: 14px;
+		background: rgba(8, 10, 28, 0.55);
+	}
+	.lb-page-status {
+		margin-top: 10px;
+	}
+</style>

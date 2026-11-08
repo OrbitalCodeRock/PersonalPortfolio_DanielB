@@ -19,6 +19,13 @@
 //
 // One rating per segment of a run (sending again changes it). Ratings for pools other than the ones
 // deployed are dropped. Read them back with `npm run runner:votes` (scripts/runner/votes.ts).
+//
+// And the runner's own leaderboard: each player's best run per category ('random', or 'chosen' for runs
+// built from picked segments or replays), stored with its segments so anyone can replay it:
+//
+//   GET  /api/runner/board?category=random|chosen[&player=<id>]
+//   GET  /api/runner/run?id=<runId>            → the run, with its recipes
+//   POST /api/runner/run { playerId, name, category, seconds, distance, segments: [{ v, id }] }
 import { PHRASE, PUZZLES } from '../src/secrets/config';
 import { POOLS_VERSION, findRecipe } from '../src/secrets/runner/poolVersion';
 
@@ -184,6 +191,193 @@ async function vote(request: Request, env: Env): Promise<Response> {
 	return json({ ok: true });
 }
 
+// ---- The rooftop runner's leaderboard ---------------------------------------------------------
+
+const CATEGORIES = new Set(['random', 'chosen']);
+/** Most runs one player can post in an hour (only new personal bests are posted). */
+const RUNS_PER_HOUR = 60;
+const cleanName = (v: unknown) => (typeof v === 'string' ? v.replace(/[\u0000-\u001f\u007f]/g, '').trim() : '');
+
+interface SegmentRef {
+	v: string;
+	id: string;
+}
+
+/** Rank of a best time in a category: 1 + the players whose best beats it. */
+async function runnerRank(env: Env, category: string, best: number): Promise<number> {
+	const ahead = await env.DB.prepare(
+		`SELECT COUNT(*) AS n FROM (SELECT player_id, MAX(seconds) AS s FROM runner_runs WHERE category = ? GROUP BY player_id) WHERE s > ?`,
+	)
+		.bind(category, best)
+		.first<{ n: number }>();
+	return (ahead?.n ?? 0) + 1;
+}
+
+/**
+ * Each player's best run in a category, best first (first 100).
+ *   GET /api/runner/board?category=random|chosen[&player=<id>]
+ *   → { category, total, entries: [{ rank, name, seconds, distance, segments, runId, at }], me?: { rank, seconds, runId } }
+ */
+async function runnerBoard(url: URL, env: Env): Promise<Response> {
+	const category = url.searchParams.get('category') ?? 'random';
+	if (!CATEGORIES.has(category)) return json({ error: 'No such category.' }, 404);
+	const { results } = await env.DB.prepare(
+		`SELECT r.id, p.name, r.seconds, r.distance, r.segments, r.created_at FROM runner_runs r JOIN players p USING (player_id)
+		 WHERE r.category = ?1 AND r.id = (
+			SELECT r2.id FROM runner_runs r2 WHERE r2.category = r.category AND r2.player_id = r.player_id
+			ORDER BY r2.seconds DESC, r2.created_at LIMIT 1
+		 )
+		 ORDER BY r.seconds DESC, r.created_at LIMIT 100`,
+	)
+		.bind(category)
+		.all<{ id: string; name: string; seconds: number; distance: number; segments: string; created_at: string }>();
+	const total = await env.DB.prepare('SELECT COUNT(DISTINCT player_id) AS n FROM runner_runs WHERE category = ?')
+		.bind(category)
+		.first<{ n: number }>();
+	const entries = results.map((r, i) => ({
+		rank: i + 1,
+		name: r.name,
+		seconds: r.seconds,
+		distance: r.distance,
+		segments: (JSON.parse(r.segments) as unknown[]).length,
+		runId: r.id,
+		at: r.created_at,
+	}));
+	const player = url.searchParams.get('player');
+	let me: { rank: number; seconds: number; runId: string } | undefined;
+	if (player && ID_RE.test(player)) {
+		const mine = await env.DB.prepare(
+			'SELECT id, seconds FROM runner_runs WHERE category = ? AND player_id = ? ORDER BY seconds DESC, created_at LIMIT 1',
+		)
+			.bind(category, player)
+			.first<{ id: string; seconds: number }>();
+		if (mine) me = { rank: await runnerRank(env, category, mine.seconds), seconds: mine.seconds, runId: mine.id };
+	}
+	return json({ category, total: total?.n ?? 0, entries, me });
+}
+
+/**
+ * One run, with its recipes, for replaying.
+ *   GET /api/runner/run?id=<runId> → { id, name, category, seconds, distance, segments: [{ v, id, recipe }] }
+ */
+async function runnerRun(url: URL, env: Env): Promise<Response> {
+	const id = url.searchParams.get('id') ?? '';
+	if (!ID_RE.test(id)) return json({ error: 'No such run.' }, 404);
+	const run = await env.DB.prepare(
+		`SELECT r.id, p.name, r.category, r.seconds, r.distance, r.segments FROM runner_runs r JOIN players p USING (player_id)
+		 WHERE r.id = ?`,
+	)
+		.bind(id)
+		.first<{ id: string; name: string; category: string; seconds: number; distance: number; segments: string }>();
+	if (!run) return json({ error: 'No such run.' }, 404);
+	const refs = JSON.parse(run.segments) as SegmentRef[];
+	const recipes = new Map<string, unknown>();
+	for (const key of new Set(refs.map((r) => `${r.v}/${r.id}`))) {
+		const [v, rid] = key.split('/');
+		const row = await env.DB.prepare('SELECT recipe FROM runner_recipes WHERE pools_version = ? AND recipe_id = ?')
+			.bind(v, rid)
+			.first<{ recipe: string }>();
+		recipes.set(key, row ? JSON.parse(row.recipe) : v === POOLS_VERSION ? (findRecipe(rid) ?? null) : null);
+	}
+	return json({
+		id: run.id,
+		name: run.name,
+		category: run.category,
+		seconds: run.seconds,
+		distance: run.distance,
+		segments: refs.map((r) => ({ v: r.v, id: r.id, recipe: recipes.get(`${r.v}/${r.id}`) })),
+	});
+}
+
+/**
+ * Posts a run. It's kept if it beats the player's best in its category; either way the reply says where
+ * their best stands.
+ *   POST /api/runner/run { playerId, name, category, seconds, distance, segments: [{ v, id }] }
+ *   → { kept, runId?, rank, best }
+ */
+async function postRun(request: Request, env: Env): Promise<Response> {
+	let body: Record<string, unknown>;
+	try {
+		body = await request.json();
+	} catch {
+		return json({ error: 'Bad request.' }, 400);
+	}
+	const { playerId, category } = body;
+	const name = cleanName(body.name);
+	const secs = seconds(body.seconds);
+	const distance = Number(body.distance);
+	const segments = Array.isArray(body.segments) ? (body.segments as Record<string, unknown>[]) : null;
+	if (
+		typeof playerId !== 'string' ||
+		!ID_RE.test(playerId) ||
+		typeof category !== 'string' ||
+		!CATEGORIES.has(category) ||
+		secs === null ||
+		!Number.isInteger(distance) ||
+		distance < 0 ||
+		distance > 1_000_000 ||
+		!segments ||
+		!segments.length ||
+		segments.length > 500
+	) {
+		return json({ error: 'Bad request.' }, 400);
+	}
+	if (!name || name.length > 24) return json({ error: 'Names are 1–24 characters.' }, 400);
+	const refs: SegmentRef[] = [];
+	for (const s of segments) {
+		if (typeof s?.v !== 'string' || !/^[0-9a-f]{8}$/.test(s.v) || typeof s?.id !== 'string' || !/^[\w-]{1,40}$/.test(s.id)) {
+			return json({ error: 'Bad request.' }, 400);
+		}
+		refs.push({ v: s.v, id: s.id });
+	}
+	// Every segment must be one the game could have played: from the deployed pools, or already on file
+	// from an earlier version (which is how replays of older runs get here).
+	const statements: D1Prepared[] = [];
+	for (const key of new Set(refs.map((r) => `${r.v}/${r.id}`))) {
+		const [v, id] = key.split('/');
+		const current = v === POOLS_VERSION ? findRecipe(id) : undefined;
+		if (current) {
+			statements.push(
+				env.DB.prepare(
+					'INSERT INTO runner_recipes (pools_version, recipe_id, tier, recipe) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING',
+				).bind(v, id, current.tier, JSON.stringify(current)),
+			);
+			continue;
+		}
+		const known = await env.DB.prepare('SELECT 1 AS ok FROM runner_recipes WHERE pools_version = ? AND recipe_id = ?')
+			.bind(v, id)
+			.first<{ ok: number }>();
+		if (!known) return json({ error: 'Those segments aren’t available any more.' }, 409);
+	}
+	const recent = await env.DB.prepare(
+		`SELECT COUNT(*) AS n FROM runner_runs WHERE player_id = ? AND created_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-1 hour')`,
+	)
+		.bind(playerId)
+		.first<{ n: number }>();
+	if ((recent?.n ?? 0) >= RUNS_PER_HOUR) return json({ error: 'Too many runs posted; try again later.' }, 429);
+
+	await env.DB.prepare(
+		'INSERT INTO players (player_id, name) VALUES (?, ?) ON CONFLICT (player_id) DO UPDATE SET name = excluded.name',
+	)
+		.bind(playerId, name)
+		.run();
+	const prev = await env.DB.prepare('SELECT MAX(seconds) AS s FROM runner_runs WHERE category = ? AND player_id = ?')
+		.bind(category, playerId)
+		.first<{ s: number | null }>();
+	let runId: string | undefined;
+	if (prev?.s == null || secs > prev.s) {
+		runId = crypto.randomUUID();
+		statements.push(
+			env.DB.prepare(
+				'INSERT INTO runner_runs (id, player_id, category, seconds, distance, segments) VALUES (?, ?, ?, ?, ?, ?)',
+			).bind(runId, playerId, category, secs, distance, JSON.stringify(refs)),
+		);
+	}
+	if (statements.length) await env.DB.batch(statements);
+	const best = Math.max(secs, prev?.s ?? 0);
+	return json({ kept: !!runId, runId, rank: await runnerRank(env, category, best), best });
+}
+
 export default {
 	async fetch(request: Request, env: Env): Promise<Response> {
 		const url = new URL(request.url);
@@ -204,6 +398,16 @@ export default {
 			} catch (err) {
 				console.error(err);
 				return json({ error: 'Votes are unavailable.' }, 500);
+			}
+		}
+		if (url.pathname.startsWith('/api/runner/')) {
+			try {
+				if (url.pathname === '/api/runner/board' && request.method === 'GET') return await runnerBoard(url, env);
+				if (url.pathname === '/api/runner/run' && request.method === 'GET') return await runnerRun(url, env);
+				if (url.pathname === '/api/runner/run' && request.method === 'POST') return await postRun(request, env);
+			} catch (err) {
+				console.error(err);
+				return json({ error: 'The runner leaderboard is unavailable.' }, 500);
 			}
 		}
 		if (url.pathname.startsWith('/api/')) return json({ error: 'Not found.' }, 404);
