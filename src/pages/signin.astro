@@ -1,0 +1,58 @@
+---
+// Where the emailed sign-in link lands (worker/auth.ts). It asks for one click before using the token,
+// so email scanners that open links can't use it up, then sends the visitor to the leaderboards.
+import ContentPage from '../layouts/ContentPage.astro';
+---
+
+<ContentPage title="Signing in" intro="One more click and you’re on the boards.">
+	<div class="si">
+		<button type="button" class="secret-btn si-go" hidden>Finish signing in</button>
+		<p class="si-msg" aria-live="polite"></p>
+	</div>
+</ContentPage>
+
+<script>
+	import { finishSignIn, AccountError } from '../secrets/account';
+	import { syncQuietly } from '../secrets/boards';
+	import { navigate } from 'astro:transitions/client';
+
+	document.addEventListener('astro:page-load', () => {
+		const btn = document.querySelector<HTMLButtonElement>('.si-go');
+		if (!btn) return;
+		const msg = document.querySelector<HTMLElement>('.si-msg')!;
+		const token = new URLSearchParams(location.search).get('token');
+		if (!token) {
+			msg.textContent = 'This page needs the link from your sign-in email.';
+			return;
+		}
+		btn.hidden = false;
+		btn.focus();
+		btn.addEventListener('click', async () => {
+			btn.disabled = true;
+			msg.textContent = 'Signing in…';
+			try {
+				const account = await finishSignIn(token);
+				// Keep the token out of the address bar and history.
+				history.replaceState(null, '', '/signin');
+				msg.textContent = account.name ? `Signed in as ${account.name}.` : 'Signed in. Next, pick your name.';
+				void syncQuietly();
+				setTimeout(() => navigate('/leaderboard'), 700);
+			} catch (err) {
+				btn.disabled = false;
+				msg.textContent = err instanceof AccountError ? err.message : 'Signing in isn’t working right now. Please try again.';
+			}
+		});
+	});
+</script>
+
+<style>
+	.si {
+		display: grid;
+		gap: 12px;
+		justify-items: start;
+	}
+	.si-msg {
+		margin: 0;
+		color: var(--text-muted);
+	}
+</style>

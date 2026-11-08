@@ -29,6 +29,9 @@ import { createSim, overlaps, FLOOR_MARGIN, type DroneState, type TrainState } f
 import { createRunnerSound } from '../runner/sound';
 import { setRecipePools } from '../runner/seeds';
 import { POOLS, POOLS_VERSION, findRecipe } from '../runner/poolVersion';
+import type { Recipe } from '../runner/levelgen';
+import { recordRun, type RunCategory } from '../runnerBoard';
+import { ordinal } from '../boards';
 
 // Level pools written by the level model or the search (src/secrets/runner/pools.json).
 setRecipePools(POOLS);
@@ -69,6 +72,26 @@ const CSS = `
 .run-vote button[hidden] { display: none; }
 .run-vote button:hover, .run-vote button:focus-visible { background: rgba(255, 231, 163, 0.16); border-color: rgba(255, 231, 163, 0.55); }
 .run-vote kbd { font: 600 0.68rem ui-monospace, Consolas, monospace; opacity: 0.7; }
+.run-replay { position: absolute; left: 50%; bottom: 9%; transform: translateX(-50%); }
+.run-replay kbd { font: 600 0.72rem ui-monospace, Consolas, monospace; opacity: 0.7; margin-left: 4px; }
+.run-tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.run-mode { color: var(--text-muted); font-size: 0.85rem; }
+.run-pick { position: absolute; inset: 0; overflow: auto; padding: 14px 16px; border-radius: 10px;
+	background: rgba(8, 10, 28, 0.96); color: #eef0ff; font-size: 0.88rem; display: grid; gap: 10px; align-content: start; }
+.run-pick[hidden] { display: none; }
+.run-pick h3 { margin: 0; font-size: 1.05rem; color: #ffe7a3; }
+.run-pick h4 { margin: 6px 0 2px; font-size: 0.85rem; color: var(--text-muted); font-weight: 600; }
+.run-pick p { margin: 0; color: var(--text-muted); }
+.run-pick-chosen { display: flex; flex-wrap: wrap; gap: 6px; min-height: 30px; align-items: center; margin: 0; padding: 0; list-style: none; }
+.run-pick-chosen li button { font: 600 0.8rem ui-monospace, Consolas, monospace; cursor: pointer; padding: 3px 8px; border-radius: 999px;
+	border: 1px solid rgba(255, 231, 163, 0.5); background: rgba(255, 231, 163, 0.12); color: #ffe7a3; }
+.run-pick-bands { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 4px 18px; }
+.run-pick-row { display: flex; gap: 8px; align-items: baseline; }
+.run-pick-row button { font: 600 0.8rem ui-monospace, Consolas, monospace; cursor: pointer; padding: 2px 8px; border-radius: 6px; flex: none;
+	border: 1px solid rgba(255, 255, 255, 0.18); background: transparent; color: inherit; }
+.run-pick-row button:hover, .run-pick-row button:focus-visible, .run-pick-chosen li button:hover { border-color: rgba(255, 231, 163, 0.7); }
+.run-pick-row span { color: var(--text-muted); font-size: 0.8rem; }
+.run-pick-actions { display: flex; gap: 8px; flex-wrap: wrap; position: sticky; bottom: -14px; padding: 8px 0; background: rgba(8, 10, 28, 0.96); }
 `;
 
 const hash = (a: number, b: number, c = 0) => {
@@ -78,7 +101,23 @@ const hash = (a: number, b: number, c = 0) => {
 };
 const fmtTime = (t: number) => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, '0')}`;
 
-export function launch(): void {
+/**
+ * A run that starts from set segments (picked by the player, or a replay); after them it carries on with
+ * random ones. Runs like this go on the 'chosen' board.
+ */
+export interface RunPlan {
+	label: string;
+	segments: { v: string; recipe: Recipe }[];
+	/** A time to beat (the replayed run's), shown in the corner. */
+	target?: { name: string; seconds: number };
+}
+
+export interface LaunchOptions {
+	plan?: RunPlan;
+}
+
+export function launch(opts: LaunchOptions = {}): void {
+	setData('now-opened', true);
 	if (!document.getElementById('secret-style-runner')) {
 		const s = document.createElement('style');
 		s.id = 'secret-style-runner';
@@ -94,10 +133,17 @@ export function launch(): void {
 				<button type="button" data-vote="1" aria-label="Thumbs up (key 1)" title="Thumbs up (1)">👍<kbd>1</kbd></button>
 				<button type="button" data-vote="-1" aria-label="Thumbs down (key 2)" title="Thumbs down (2)">👎<kbd>2</kbd></button>
 			</div>
+			<button type="button" class="secret-btn run-replay" hidden>↻ Replay this run <kbd>F</kbd></button>
+			<div class="run-pick" hidden role="dialog" aria-label="Choose segments"></div>
 		</div>
 		<div class="run-bar">
 			<p class="secret-hint">Jump: Space, ↑, W, or tap/click the game. Hold for a higher jump. R restarts. Rate a segment with 1 (👍) or 2 (👎).</p>
-			<button type="button" class="secret-btn run-sound" aria-pressed="true">Sound: on</button>
+			<div class="run-tools">
+				<span class="run-mode"></span>
+				<button type="button" class="secret-btn run-random" hidden>Random runs</button>
+				<button type="button" class="secret-btn run-choose">Choose segments</button>
+				<button type="button" class="secret-btn run-sound" aria-pressed="true">Sound: on</button>
+			</div>
 		</div>`;
 	const canvas = win.body.querySelector('canvas')!;
 	const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -194,8 +240,12 @@ export function launch(): void {
 	// ---- Ratings: thumbs up/down on each segment, sent to the Worker for training the level model ---
 	// After leaving a pool segment, a faint prompt at the top offers a rating of it for a few seconds (keys
 	// 1 and 2, or a tap). When the run ends, it asks about the segment the run ended in and stays up.
-	/** The run's pool segments in order, and when each was entered (run clock). */
-	let played: { id: string; enteredAt: number }[] = [];
+	/** The run's pool segments in order, with their pools version, and when each was entered (run clock). */
+	let played: { seg: Segment; recipe: Recipe; id: string; v: string; enteredAt: number }[] = [];
+	/** Pools version of recipes from elsewhere (a replay of a run on older pools); the rest are current. */
+	const versionOf = new WeakMap<Recipe, string>();
+	/** Rated only when the recipe is in the deployed pools (the Worker can't match it otherwise). */
+	const rateable = (e: { id: string; v: string }) => e.v === POOLS_VERSION && !!findRecipe(e.id);
 	let runId = '';
 	interface Prompt {
 		position: number;
@@ -234,11 +284,13 @@ export function launch(): void {
 	function trackSegment() {
 		if (mode !== 'running') return;
 		const seg = segments.find((s) => P.x >= s.x0 && P.x < s.x1);
-		if (!seg?.label || !findRecipe(seg.label)) return;
+		if (!seg?.recipe || !seg.label) return;
 		const prev = played[played.length - 1];
-		if (prev?.id === seg.label) return;
-		played.push({ id: seg.label, enteredAt: time });
-		if (prev) {
+		if (prev?.seg === seg) return;
+		// Pool recipes, or ones from a plan; not the intro roof or a seed fallback.
+		if (!versionOf.has(seg.recipe) && findRecipe(seg.label) !== seg.recipe) return;
+		played.push({ seg, recipe: seg.recipe, id: seg.label, v: versionOf.get(seg.recipe) ?? POOLS_VERSION, enteredAt: time });
+		if (prev && rateable(prev)) {
 			const position = played.length - 2;
 			ask({ position, id: prev.id, outcome: 'cleared', seconds: time - prev.enteredAt, runSeconds: time });
 		}
@@ -246,8 +298,9 @@ export function launch(): void {
 
 	/** On the sim's 'die' event, which arrives mid-step: reads the sim directly, not the synced copies. */
 	function onRunOver() {
+		saveRun();
 		const last = played[played.length - 1];
-		if (!last) return hidePrompt();
+		if (!last || !rateable(last)) return hidePrompt();
 		ask({
 			position: played.length - 1,
 			id: last.id,
@@ -296,8 +349,135 @@ export function launch(): void {
 	// Taps on the prompt shouldn't reach the game underneath.
 	voteBox.addEventListener('pointerdown', (e) => e.stopPropagation());
 
+	// ---- Runs: posting bests, replays, and runs from chosen segments ------------------------------
+	let plan: RunPlan | null = null;
+	/** The run that just ended, for "Replay this run". */
+	let lastRun: { segments: { v: string; recipe: Recipe }[]; seconds: number } | null = null;
+	const modeEl = win.body.querySelector<HTMLElement>('.run-mode')!;
+	const randomBtn = win.body.querySelector<HTMLButtonElement>('.run-random')!;
+	const chooseBtn = win.body.querySelector<HTMLButtonElement>('.run-choose')!;
+	const replayBtn = win.body.querySelector<HTMLButtonElement>('.run-replay')!;
+	const picker = win.body.querySelector<HTMLElement>('.run-pick')!;
+
+	function setPlan(next: RunPlan | null) {
+		plan = next;
+		for (const e of plan?.segments ?? []) versionOf.set(e.recipe, e.v);
+		const n = plan?.segments.length ?? 0;
+		modeEl.textContent = plan ? `${plan.label}: ${n} segment${n === 1 ? '' : 's'}, then random` : 'Random runs';
+		randomBtn.hidden = !plan;
+		win.setStatus('');
+		reset();
+	}
+
+	/** On the sim's 'die' event: keeps the run for replaying, and posts it if it's a new best. */
+	function saveRun() {
+		if (!played.length) {
+			lastRun = null;
+			return;
+		}
+		const seconds = sim.S.time;
+		lastRun = { segments: played.map((e) => ({ v: e.v, recipe: e.recipe })), seconds };
+		const category: RunCategory = plan ? 'chosen' : 'random';
+		const board = category === 'random' ? 'random runs' : 'chosen runs';
+		void recordRun({
+			category,
+			seconds: +seconds.toFixed(2),
+			distance: Math.max(0, Math.floor(P.maxX - 4)),
+			segments: played.map((e) => ({ v: e.v, id: e.id })),
+		}).then((r) => {
+			if (!r.best) return;
+			const t = fmtTime(seconds);
+			win.setStatus(
+				!r.signed
+					? `New best in ${board}: ${t}. Sign in to the leaderboards to post it.`
+					: r.offline
+						? `New best in ${board}: ${t}. The leaderboard can’t be reached; it’ll be posted later.`
+						: r.rank
+							? `New best in ${board}: ${t}. You’re ${ordinal(r.rank)} on that board.`
+							: `New best in ${board}: ${t}.`,
+			);
+		});
+	}
+
+	function replayLast() {
+		if (!lastRun || mode !== 'dead') return;
+		const run = lastRun;
+		setPlan({ label: 'Replaying your run', segments: run.segments, target: { name: 'your run', seconds: run.seconds } });
+	}
+	replayBtn.addEventListener('click', replayLast);
+	replayBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+	randomBtn.addEventListener('click', () => setPlan(null));
+
+	// The picker: segments from every band, in the order picked; they play after the intro roof.
+	let picking = false;
+	let picks: string[] = [];
+	const bandName = (t: number) => (t === POOLS.length - 1 ? `${t * 15} s and on` : `${t * 15}–${t * 15 + 15} s`);
+	function renderPicker() {
+		picker.innerHTML = `
+			<h3>Choose segments</h3>
+			<p>Pick segments in the order you want them. They play after the first roof, then the run carries on with
+			random ones. Runs that start this way go on the leaderboard’s <b>Chosen</b> board.</p>
+			<ol class="run-pick-chosen" aria-label="Your segments (click one to remove it)">${
+				picks.length
+					? picks.map((id, i) => `<li><button type="button" data-remove="${i}" title="Remove">${id} ✕</button></li>`).join('')
+					: '<li><p>None yet.</p></li>'
+			}</ol>
+			<div class="run-pick-bands">${POOLS.map(
+				(pool, t) =>
+					`<div><h4>${bandName(t)}</h4>${pool
+						.map(
+							(r) =>
+								`<div class="run-pick-row"><button type="button" data-add="${r.id}" title="Add ${r.id}">+ ${r.id}</button><span>${r.features
+									.map((f) => f.type)
+									.join(' · ')}</span></div>`,
+						)
+						.join('')}</div>`,
+			).join('')}</div>
+			<div class="run-pick-actions">
+				<button type="button" class="secret-btn" data-act="play" ${picks.length ? '' : 'disabled'}>Play these</button>
+				<button type="button" class="secret-btn" data-act="clear" ${picks.length ? '' : 'disabled'}>Clear</button>
+				<button type="button" class="secret-btn" data-act="close">Cancel</button>
+			</div>`;
+	}
+	function openPicker() {
+		picking = true;
+		reset();
+		picks = getData<string[]>('now-picks', []).filter((id) => findRecipe(id));
+		renderPicker();
+		picker.hidden = false;
+		picker.querySelector<HTMLElement>('[data-add]')?.focus();
+	}
+	function closePicker() {
+		picking = false;
+		picker.hidden = true;
+		chooseBtn.focus();
+	}
+	chooseBtn.addEventListener('click', openPicker);
+	picker.addEventListener('click', (e) => {
+		const el = (e.target as Element).closest<HTMLElement>('button');
+		if (!el) return;
+		if (el.dataset.add) {
+			if (picks.length < 60) picks.push(el.dataset.add);
+		} else if (el.dataset.remove) {
+			picks.splice(Number(el.dataset.remove), 1);
+		} else if (el.dataset.act === 'clear') {
+			picks = [];
+		} else if (el.dataset.act === 'close') {
+			return closePicker();
+		} else if (el.dataset.act === 'play') {
+			setData('now-picks', picks);
+			closePicker();
+			setPlan({ label: 'Your segments', segments: picks.map((id) => ({ v: POOLS_VERSION, recipe: findRecipe(id)! })) });
+			return;
+		}
+		const scroll = picker.scrollTop;
+		renderPicker();
+		picker.scrollTop = scroll;
+	});
+
 	function reset() {
-		sim.reset();
+		// A plan's segments are queued again on every restart; otherwise the run is all random.
+		sim.force(plan ? plan.segments.map((e) => [e.recipe, e.recipe.tier] as [Recipe, number]) : []);
 		sync();
 		played = [];
 		runId = newRunId();
@@ -954,6 +1134,14 @@ export function launch(): void {
 			ctx.fillStyle = done ? GOLD : '#eef0ff';
 			ctx.fillText(`${done ? '✦ ' : ''}Best ${fmtTime(best)}`, corner ? CW - 20 : 20, corner ? 31 : 87);
 		});
+		// Replaying a run: the time to beat.
+		if (plan?.target) {
+			const beat = time > plan.target.seconds;
+			ctx.font = '600 13px ui-monospace, Consolas, monospace';
+			ctx.textAlign = 'right';
+			ctx.fillStyle = beat ? GOLD : 'rgba(238, 240, 255, 0.7)';
+			ctx.fillText(`${beat ? '✦ Beat ' : 'vs '}${plan.target.name} ${fmtTime(plan.target.seconds)}`, CW - 12, CH - 12);
+		}
 		// The segment underfoot (useful when judging seeds).
 		const seg = segments.find((s) => P.x >= s.x0 && P.x < s.x1);
 		if (seg && seg.label) {
@@ -983,10 +1171,20 @@ export function launch(): void {
 			mode === 'ready'
 				? [
 						'You run on your own and speed up as you go. Jump to stay on the roofs.',
+						plan
+							? plan.target
+								? `${plan.label}: beat ${fmtTime(plan.target.seconds)}.`
+								: `${plan.label} come first, then random ones.`
+							: '',
 						isSolved(ID) ? 'Press Space or tap to run.' : 'Last one minute. Press Space or tap to run.',
 					]
 				: [
 						`${fmtTime(time)} · ${Math.max(0, Math.floor(P.maxX - 4))} m`,
+						plan?.target
+							? time > plan.target.seconds
+								? `You beat ${plan.target.name} (${fmtTime(plan.target.seconds)}).`
+								: `${fmtTime(plan.target.seconds - time)} short of ${plan.target.name}.`
+							: '',
 						deadFor > 0.6 ? 'Press Space or tap to run again.' : '',
 					];
 		scaled(CW / 2, CH / 2, () => {
@@ -1048,6 +1246,7 @@ export function launch(): void {
 	}
 	const JUMP_KEYS = new Set(['Space', 'ArrowUp', 'KeyW']);
 	const onKeyDown = (e: KeyboardEvent) => {
+		if (picking) return;
 		if (JUMP_KEYS.has(e.code)) {
 			e.preventDefault();
 			sound.wake();
@@ -1058,9 +1257,12 @@ export function launch(): void {
 			rate(1);
 		} else if (e.code === 'Digit2' || e.code === 'Numpad2') {
 			rate(-1);
+		} else if (e.code === 'KeyF') {
+			replayLast();
 		}
 	};
 	const onKeyUp = (e: KeyboardEvent) => {
+		if (picking) return;
 		if (JUMP_KEYS.has(e.code)) release();
 	};
 	document.addEventListener('keydown', onKeyDown);
@@ -1093,6 +1295,8 @@ export function launch(): void {
 			promptLeft -= dt;
 			if (promptLeft <= 0) hidePrompt();
 		}
+		const canReplay = mode === 'dead' && deadFor > 0.6 && !!lastRun && !picking;
+		if (replayBtn.hidden === canReplay) replayBtn.hidden = !canReplay;
 		goalFlash = Math.max(0, goalFlash - dt * 0.6);
 		// Wind rises with speed, swells during a boost (over the speed cap) and while falling fast.
 		if (mode === 'running') {
@@ -1123,7 +1327,7 @@ export function launch(): void {
 		setData('now-hints', seenHints);
 	});
 
-	reset();
+	setPlan(opts.plan ?? null);
 	raf = requestAnimationFrame(frame);
 
 	// Test hooks for the dev console: jump straight to a time band, or inspect the run.
