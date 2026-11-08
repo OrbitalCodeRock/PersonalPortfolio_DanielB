@@ -8,6 +8,12 @@
 //   npx wrangler d1 migrations apply portfolio-leaderboard --remote
 // After adding a file to migrations/, run the last command again before deploying.
 //
+// Leaderboard sign-in (worker/auth.ts) also needs:
+//   TURNSTILE_SITE_KEY in "vars" below (Turnstile's public site key),
+//   npx wrangler secret put TURNSTILE_SECRET
+//   and the sending domain onboarded in Cloudflare Email Service (the EMAIL binding below; Workers Paid).
+// Locally, .dev.vars sets Turnstile's test secret and AUTH_DEV_LINKS=1 (links shown on the page, not emailed).
+//
 // Local testing with the API: npm run build, then
 //   npx wrangler d1 migrations apply portfolio-leaderboard --local
 //   npx wrangler dev                                    → http://localhost:8787
@@ -15,6 +21,13 @@
 	"name": "personalportfolio-danielb",
 	"main": "worker/index.ts",
 	"compatibility_date": "2026-10-26",
+	// The site's own domain; deploying attaches it to this Worker (and sets up its DNS and certificate).
+	"routes": [{ "pattern": "danielbeyer.dev", "custom_domain": true }],
+	// Public settings for leaderboard sign-in (worker/auth.ts). Secrets go in with `wrangler secret put`.
+	"vars": {
+		"EMAIL_FROM": "Daniel Beyer <signin@danielbeyer.dev>",
+		"TURNSTILE_SITE_KEY": "0x4AAAAAAF5Lnpe7PomNALug"
+	},
 	"assets": {
 		"directory": "./dist",
 		"binding": "ASSETS",
@@ -27,5 +40,7 @@
 			"database_id": "dc82a3cf-caa2-4941-8922-e2ff11d52d6c",
 			"migrations_dir": "migrations"
 		}
-	]
+	],
+	// Sign-in emails (worker/auth.ts), sent with Cloudflare Email Service.
+	"send_email": [{ "name": "EMAIL" }]
 }

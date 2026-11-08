@@ -36,3 +36,5 @@ __pycache__/
 
 # Wrangler local state (local D1 database etc.)
 .wrangler/
+# Local Worker secrets (wrangler dev)
+.dev.vars

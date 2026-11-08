@@ -5,9 +5,9 @@
 //
 //   GET  /api/leaderboard                → { counts: { [board]: number } }
 //   GET  /api/leaderboard?board=<board>  → { board, total, entries: [{ rank, name, solvedAt }] } (first 100)
-//   POST /api/leaderboard  { playerId, name, boards: string[], phrase? } → { ranks: { [board]: rank } }
+//   POST /api/leaderboard  { boards: string[], phrase? } → { ranks: { [board]: rank } }   (signed in)
 //
-// POST sets the player's name (renaming them on every board) and adds them to each listed board they
+// POST adds the signed-in player to each listed board they
 // aren't on yet. Rank = number of people on that board before you + 1, and posting a board again returns
 // the same rank. The "all" board also needs the hangman phrase. None of this is real anti-cheat: the site
 // is static, so a determined player could read every answer from the page's JavaScript.
@@ -25,31 +25,24 @@
 //
 //   GET  /api/runner/board?category=random|chosen[&player=<id>]
 //   GET  /api/runner/run?id=<runId>            → the run, with its recipes
-//   POST /api/runner/run { playerId, name, category, seconds, distance, segments: [{ v, id }] }
+//   POST /api/runner/run { category, seconds, distance, segments: [{ v, id }] }   (signed in)
+//
+// Posting to a leaderboard needs a signed-in account with a name (worker/auth.ts); the player is the
+// account, whatever the request body says. Reading the boards is public.
 import { PHRASE, PUZZLES } from '../src/secrets/config';
 import { POOLS_VERSION, findRecipe } from '../src/secrets/runner/poolVersion';
-
-interface D1Result<T> {
-	results: T[];
-}
-interface D1Prepared {
-	bind(...values: unknown[]): D1Prepared;
-	first<T>(): Promise<T | null>;
-	all<T>(): Promise<D1Result<T>>;
-	run(): Promise<unknown>;
-}
-interface Env {
-	ASSETS: { fetch(request: Request): Promise<Response> };
-	DB: { prepare(sql: string): D1Prepared; batch(statements: D1Prepared[]): Promise<unknown[]> };
-}
+import { getAccount, handleAuth, type Account } from './auth';
+import { ID_RE, json, type D1Prepared, type Env } from './shared';
 
 const BOARDS = new Set<string>(['all', ...PUZZLES.map((p) => p.id)]);
 
-const json = (data: unknown, status = 200) =>
-	new Response(JSON.stringify(data), {
-		status,
-		headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
-	});
+/** The signed-in account with a name, or the response to send instead. */
+async function poster(request: Request, env: Env): Promise<Account | Response> {
+	const account = await getAccount(request, env);
+	if (!account) return json({ error: 'Please sign in to post to the leaderboards.', signIn: true }, 401);
+	if (!account.name) return json({ error: 'Choose a name for the leaderboards first.', chooseName: true }, 403);
+	return account;
+}
 
 async function rankOf(env: Env, board: string, playerId: string): Promise<number | null> {
 	const row = await env.DB.prepare(
@@ -84,26 +77,20 @@ async function read(url: URL, env: Env): Promise<Response> {
 }
 
 async function write(request: Request, env: Env): Promise<Response> {
-	let body: { playerId?: unknown; name?: unknown; boards?: unknown; phrase?: unknown };
+	const account = await poster(request, env);
+	if (account instanceof Response) return account;
+	let body: { boards?: unknown; phrase?: unknown };
 	try {
 		body = await request.json();
 	} catch {
 		return json({ error: 'Bad request.' }, 400);
 	}
-	const playerId = typeof body.playerId === 'string' ? body.playerId.trim() : '';
-	const name = typeof body.name === 'string' ? body.name.replace(/[\u0000-\u001f\u007f]/g, '').trim() : '';
+	const playerId = account.id;
 	const boards = Array.isArray(body.boards) ? [...new Set(body.boards.filter((b) => typeof b === 'string'))] : [];
 	const phrase = typeof body.phrase === 'string' ? body.phrase.trim().toUpperCase() : '';
-	if (!/^[\w-]{8,64}$/.test(playerId)) return json({ error: 'Bad request.' }, 400);
-	if (!name || name.length > 24) return json({ error: 'Names are 1–24 characters.' }, 400);
 	if (boards.some((b) => !BOARDS.has(b))) return json({ error: 'No such board.' }, 400);
 	if (boards.includes('all') && phrase !== PHRASE) return json({ error: 'That isn’t the phrase.' }, 403);
 
-	await env.DB.prepare(
-		'INSERT INTO players (player_id, name) VALUES (?, ?) ON CONFLICT (player_id) DO UPDATE SET name = excluded.name',
-	)
-		.bind(playerId, name)
-		.run();
 	const ranks: Record<string, number> = {};
 	for (const board of boards) {
 		await env.DB.prepare('INSERT INTO solves (player_id, board) VALUES (?, ?) ON CONFLICT DO NOTHING')
@@ -118,7 +105,6 @@ async function write(request: Request, env: Env): Promise<Response> {
 /** Most ratings one visitor can send in an hour (a segment takes about 10 s); the rest are ignored. */
 const VOTES_PER_HOUR = 400;
 
-const ID_RE = /^[\w-]{8,64}$/;
 const seconds = (v: unknown) => {
 	const n = Number(v);
 	return Number.isFinite(n) && n >= 0 && n <= 3600 ? n : null;
@@ -196,7 +182,6 @@ async function vote(request: Request, env: Env): Promise<Response> {
 const CATEGORIES = new Set(['random', 'chosen']);
 /** Most runs one player can post in an hour (only new personal bests are posted). */
 const RUNS_PER_HOUR = 60;
-const cleanName = (v: unknown) => (typeof v === 'string' ? v.replace(/[\u0000-\u001f\u007f]/g, '').trim() : '');
 
 interface SegmentRef {
 	v: string;
@@ -296,20 +281,20 @@ async function runnerRun(url: URL, env: Env): Promise<Response> {
  *   → { kept, runId?, rank, best }
  */
 async function postRun(request: Request, env: Env): Promise<Response> {
+	const account = await poster(request, env);
+	if (account instanceof Response) return account;
 	let body: Record<string, unknown>;
 	try {
 		body = await request.json();
 	} catch {
 		return json({ error: 'Bad request.' }, 400);
 	}
-	const { playerId, category } = body;
-	const name = cleanName(body.name);
+	const playerId = account.id;
+	const { category } = body;
 	const secs = seconds(body.seconds);
 	const distance = Number(body.distance);
 	const segments = Array.isArray(body.segments) ? (body.segments as Record<string, unknown>[]) : null;
 	if (
-		typeof playerId !== 'string' ||
-		!ID_RE.test(playerId) ||
 		typeof category !== 'string' ||
 		!CATEGORIES.has(category) ||
 		secs === null ||
@@ -322,7 +307,6 @@ async function postRun(request: Request, env: Env): Promise<Response> {
 	) {
 		return json({ error: 'Bad request.' }, 400);
 	}
-	if (!name || name.length > 24) return json({ error: 'Names are 1–24 characters.' }, 400);
 	const refs: SegmentRef[] = [];
 	for (const s of segments) {
 		if (typeof s?.v !== 'string' || !/^[0-9a-f]{8}$/.test(s.v) || typeof s?.id !== 'string' || !/^[\w-]{1,40}$/.test(s.id)) {
@@ -356,11 +340,6 @@ async function postRun(request: Request, env: Env): Promise<Response> {
 		.first<{ n: number }>();
 	if ((recent?.n ?? 0) >= RUNS_PER_HOUR) return json({ error: 'Too many runs posted; try again later.' }, 429);
 
-	await env.DB.prepare(
-		'INSERT INTO players (player_id, name) VALUES (?, ?) ON CONFLICT (player_id) DO UPDATE SET name = excluded.name',
-	)
-		.bind(playerId, name)
-		.run();
 	const prev = await env.DB.prepare('SELECT MAX(seconds) AS s FROM runner_runs WHERE category = ? AND player_id = ?')
 		.bind(category, playerId)
 		.first<{ s: number | null }>();
@@ -381,6 +360,8 @@ async function postRun(request: Request, env: Env): Promise<Response> {
 export default {
 	async fetch(request: Request, env: Env): Promise<Response> {
 		const url = new URL(request.url);
+		const auth = await handleAuth(request, url, env);
+		if (auth) return auth;
 		if (url.pathname === '/api/leaderboard') {
 			try {
 				if (request.method === 'GET') return await read(url, env);

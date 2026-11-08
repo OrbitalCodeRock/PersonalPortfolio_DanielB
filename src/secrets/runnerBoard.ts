@@ -4,10 +4,10 @@
 // Categories: 'random' for ordinary runs; 'chosen' for runs that start from segments the player picked,
 // or from a replay (of their own run or someone else's).
 //
-// The visitor's best run in each category is kept here too. It's posted when they're signed (see
-// boards.ts), now or the next time a sync runs, so a best set before signing isn't lost.
+// The visitor's best run in each category is kept here too. It's posted when they're signed in with a
+// name (account.ts), now or the next time a sync runs, so a best set before signing in isn't lost.
 import type { Recipe } from './runner/levelgen';
-import { getData, load, setData } from './progress';
+import { getData, load, setData, update } from './progress';
 
 export type RunCategory = 'random' | 'chosen';
 export const RUN_CATEGORIES: RunCategory[] = ['random', 'chosen'];
@@ -75,9 +75,8 @@ export function postPendingRuns(): Promise<Partial<Record<RunCategory, number>>>
 			const res = await fetch('/api/runner/run', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
+				credentials: 'same-origin',
 				body: JSON.stringify({
-					playerId: p.playerId,
-					name: p.name,
 					category: cat,
 					seconds: best.seconds,
 					distance: best.distance,
@@ -91,6 +90,12 @@ export function postPendingRuns(): Promise<Partial<Record<RunCategory, number>>>
 				delete all[cat];
 				setData(KEY, all);
 				continue;
+			}
+			if (res.status === 401) {
+				// Signed out since: posted after the next sign-in.
+				update((q) => {
+					q.name = undefined;
+				});
 			}
 			if (!res.ok) throw new Error(data.error ?? String(res.status));
 			const all = localBests();

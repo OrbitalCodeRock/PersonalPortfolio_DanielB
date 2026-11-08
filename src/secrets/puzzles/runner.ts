@@ -389,7 +389,7 @@ export function launch(opts: LaunchOptions = {}): void {
 			const t = fmtTime(seconds);
 			win.setStatus(
 				!r.signed
-					? `New best in ${board}: ${t}. Sign the leaderboards to post it.`
+					? `New best in ${board}: ${t}. Sign in to the leaderboards to post it.`
 					: r.offline
 						? `New best in ${board}: ${t}. The leaderboard can’t be reached; it’ll be posted later.`
 						: r.rank

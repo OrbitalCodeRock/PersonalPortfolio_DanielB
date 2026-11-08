@@ -13,12 +13,15 @@ import ContentPage from '../layouts/ContentPage.astro';
 
 <script>
 	import { renderBoards, type BoardId } from '../secrets/boards';
+	import { getMe } from '../secrets/account';
 	import { solvedCount } from '../secrets/progress';
 
-	document.addEventListener('astro:page-load', () => {
+	document.addEventListener('astro:page-load', async () => {
 		const root = document.querySelector<HTMLElement>('[data-lb-root]');
 		if (!root) return;
 		const status = document.querySelector<HTMLElement>('.lb-page-status')!;
+		// A browser that just signed in may have its progress on the account, not here yet.
+		if (solvedCount() === 0) await getMe();
 		if (solvedCount() === 0) {
 			document.querySelector<HTMLElement>('.lb-page-locked')!.hidden = false;
 			return;
