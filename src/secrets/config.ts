@@ -1,0 +1,73 @@
+// Every answer and hint in the secret puzzle hunt lives here, so they can be changed in one place.
+// Spoilers below: this file is the answer key.
+
+export type PuzzleId =
+	| 'about' // "keyboard": the hangman finale
+	| 'education' // "text": console-launched text adventure
+	| 'now' // "momentum": endless rooftop runner (last one minute)
+	| 'games' // "moves": the chess puzzle (needs the sky view hint)
+	| 'web' // "optimization": fog-of-war contour golf
+	| 'ml' // "linear algebra": shear The Ambassadors (gives the sky view hint)
+	| 'projects' // "graph": graph puzzle
+	| 'skills' // "libraries": paper mystery
+	| 'timeline' // "simplicial": simplicial complex viewer
+	| 'sky'; // sky view: coordinates + year reveal the ring (gives the chess hint)
+
+export interface PuzzleInfo {
+	id: PuzzleId;
+	/** Where the trigger word lives, shown in the hangman's progress list. */
+	page: string;
+	/** Name shown once solved. */
+	title: string;
+	/** The phrase letter this puzzle reveals in the hangman (the hangman itself reveals none). */
+	letter?: string;
+}
+
+/** The hangman phrase. Its nine distinct letters are handed out one per puzzle below. */
+export const PHRASE = 'KEEP LOOKING UP';
+
+/** Puzzles that count toward finishing. Certifications and Employment are still being designed. */
+export const PUZZLES: PuzzleInfo[] = [
+	{ id: 'education', page: 'Education', title: 'The Dungeon Below', letter: 'K' },
+	{ id: 'now', page: 'Now', title: 'Conservation of Momentum', letter: 'E' },
+	{ id: 'web', page: 'Web Development', title: 'Global Minimum', letter: 'P' },
+	{ id: 'ml', page: 'Machine Learning', title: 'Memento Mori', letter: 'L' },
+	{ id: 'sky', page: 'Sky View', title: 'The Ring', letter: 'O' },
+	{ id: 'games', page: 'Game Development', title: 'Written in the Stars', letter: 'I' },
+	{ id: 'projects', page: 'Projects', title: 'Every Bridge Once', letter: 'N' },
+	{ id: 'skills', page: 'Skills', title: 'The Librarian’s Ledger', letter: 'G' },
+	{ id: 'timeline', page: 'Timeline', title: 'Higher Dimensions', letter: 'U' },
+	{ id: 'about', page: 'About Me', title: 'Keep Looking Up' },
+];
+
+/** The Ambassadors (1533) was painted in London. Solving the matrix puzzle shows these. */
+export const SKY_TARGET = {
+	lat: 51.5045,
+	lon: -0.1263,
+	year: 1533,
+	/** How close (degrees) the entered location has to be. */
+	tolerance: 0.5,
+};
+
+/**
+ * The chess puzzle: Légal's mate from the opening position. The sky view hint shows White's
+ * moves; the board plays Black's replies itself. Each ply is [from, to] in square names.
+ */
+export const CHESS_LINE: { san: string; from: string; to: string }[] = [
+	{ san: 'e4', from: 'e2', to: 'e4' },
+	{ san: 'e5', from: 'e7', to: 'e5' },
+	{ san: 'Nf3', from: 'g1', to: 'f3' },
+	{ san: 'd6', from: 'd7', to: 'd6' },
+	{ san: 'Bc4', from: 'f1', to: 'c4' },
+	{ san: 'Bg4', from: 'c8', to: 'g4' },
+	{ san: 'Nc3', from: 'b1', to: 'c3' },
+	{ san: 'g6', from: 'g7', to: 'g6' },
+	{ san: 'Nxe5', from: 'f3', to: 'e5' },
+	{ san: 'Bxd1', from: 'g4', to: 'd1' },
+	{ san: 'Bxf7+', from: 'c4', to: 'f7' },
+	{ san: 'Ke7', from: 'e8', to: 'e7' },
+	{ san: 'Nd5#', from: 'c3', to: 'd5' },
+];
+
+/** The hint shown in the sky view: White's moves only. */
+export const CHESS_HINT = CHESS_LINE.filter((_, i) => i % 2 === 0).map((m) => m.san);

@@ -905,6 +905,7 @@ const { items } = Astro.props;
 		zoneAbbreviation,
 		zonedParts,
 	} from '../scripts/skyTime';
+	import { checkSkySecret } from '../secrets/skyRing';
 
 	let pageAbort: AbortController | null = null;
 
@@ -1218,7 +1219,9 @@ const { items } = Astro.props;
 			{ signal },
 		);
 		const timeTicker = setInterval(() => {
-			if (getView() === 'surface') showTime();
+			if (getView() !== 'surface') return;
+			showTime();
+			checkSkySecret(); // the secret puzzle hunt's sky clue
 		}, 250);
 		signal.addEventListener('abort', () => clearInterval(timeTicker));
 		showTime();
@@ -1230,7 +1233,7 @@ const { items } = Astro.props;
 		document.addEventListener(
 			'keydown',
 			(e) => {
-				if (e.key !== 'Escape') return;
+				if (e.key !== 'Escape' || e.defaultPrevented) return; // a puzzle window took it (src/secrets/ui.ts)
 				// Close the location or time zone menu first, rather than leaving the sky view.
 				if (!placeMenu.hidden) {
 					closePlaceMenu();

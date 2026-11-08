@@ -1,5 +1,6 @@
 ---
 import ContentPage from '../layouts/ContentPage.astro';
+import SecretText from '../components/SecretText.astro';
 
 // Newest first. `when` is the month or season; empty when the doc gives none.
 const years: { year: string; events: { when: string; text: string }[] }[] = [
@@ -109,7 +110,9 @@ const years: { year: string; events: { when: string; text: string }[] }[] = [
 						{y.events.map((e) => (
 							<li>
 								<span class="when">{e.when}</span>
-								<span class="what">{e.text}</span>
+								<span class="what">
+									<SecretText text={e.text} word="simplicial" id={e.text.includes('simplicial') ? 'timeline' : undefined} />
+								</span>
 							</li>
 						))}
 					</ol>

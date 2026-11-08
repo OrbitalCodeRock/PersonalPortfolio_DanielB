@@ -1,6 +1,7 @@
 ---
 import ContentPage from '../layouts/ContentPage.astro';
 import Entry from '../components/Entry.astro';
+import Secret from '../components/Secret.astro';
 import { papers, repos } from '../data/links';
 ---
 
@@ -38,7 +39,7 @@ import { papers, repos } from '../data/links';
 				]}
 			>
 				<p>
-					Rebuilt a published research model that uses GNNs and text encoders to classify news as factual or non-factual.
+					Rebuilt a published research model that uses GNNs and <Secret id="education">text</Secret> encoders to classify news as factual or non-factual.
 					Training and tuning were automated with MLflow and Optuna.
 				</p>
 			</Entry>

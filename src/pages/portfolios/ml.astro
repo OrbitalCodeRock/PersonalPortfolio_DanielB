@@ -2,6 +2,7 @@
 import ContentPage from '../../layouts/ContentPage.astro';
 import Entry from '../../components/Entry.astro';
 import ChipGroups from '../../components/ChipGroups.astro';
+import Secret from '../../components/Secret.astro';
 import { credentials, papers, profiles, quantumBlog, repos } from '../../data/links';
 
 const skills = [
@@ -108,7 +109,7 @@ const concepts = [
 				<p>Graph theory and 3D rendering in Python.</p>
 			</Entry>
 			<Entry title="Representing Quantum Circuits" links={quantumBlog}>
-				<p>A three-part blog series covering the linear algebra behind quantum circuits.</p>
+				<p>A three-part blog series covering the <Secret id="ml">linear algebra</Secret> behind quantum circuits.</p>
 			</Entry>
 		</div>
 	</section>

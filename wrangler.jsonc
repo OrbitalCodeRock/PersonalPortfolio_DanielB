@@ -1,9 +1,31 @@
-// Cloudflare Workers config. The site is fully static, so the Worker just
-// serves the Astro build output from ./dist.
+// Cloudflare Workers config. The site is static: the Worker serves the Astro build from ./dist,
+// and only /api/* runs worker/index.ts (the secret puzzle hunt's leaderboards and the runner's
+// thumbs up/down segment ratings, both stored in D1).
+//
+// One-time setup:
+//   npx wrangler login
+//   npx wrangler d1 create portfolio-leaderboard       → paste the database_id it prints below
+//   npx wrangler d1 migrations apply portfolio-leaderboard --remote
+// After adding a file to migrations/, run the last command again before deploying.
+//
+// Local testing with the API: npm run build, then
+//   npx wrangler d1 migrations apply portfolio-leaderboard --local
+//   npx wrangler dev                                    → http://localhost:8787
 {
 	"name": "personalportfolio-danielb",
+	"main": "worker/index.ts",
 	"compatibility_date": "2026-10-26",
 	"assets": {
-		"directory": "./dist"
-	}
+		"directory": "./dist",
+		"binding": "ASSETS",
+		"run_worker_first": ["/api/*"]
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "portfolio-leaderboard",
+			"database_id": "dc82a3cf-caa2-4941-8922-e2ff11d52d6c",
+			"migrations_dir": "migrations"
+		}
+	]
 }

@@ -1,6 +1,7 @@
 ---
 import ContentPage from '../layouts/ContentPage.astro';
 import Entry from '../components/Entry.astro';
+import Secret from '../components/Secret.astro';
 import { repos } from '../data/links';
 ---
 
@@ -11,7 +12,7 @@ import { repos } from '../data/links';
 		<Entry title="Building this website" links={[{ label: 'Source on GitHub', href: repos.portfolio }]}>
 			<p>
 				You’re looking at it. It’s built with Astro, GSAP and Three.js, which is a lot of animation power for a site that
-				mostly says “hire me.” It’s never quite finished, but it’s always shipping.
+				mostly says “hire me.” It’s never quite finished, but it never loses <Secret id="now">momentum</Secret>.
 			</p>
 			<!-- A nudge toward the sky view easter egg on the home page, without naming it (same as on Projects). -->
 			<p class="entry-note">

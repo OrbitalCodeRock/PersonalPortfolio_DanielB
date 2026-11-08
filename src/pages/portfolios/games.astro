@@ -2,6 +2,7 @@
 import ContentPage from '../../layouts/ContentPage.astro';
 import Entry from '../../components/Entry.astro';
 import ChipGroups from '../../components/ChipGroups.astro';
+import SecretText from '../../components/SecretText.astro';
 import { clubGames, credentials, games, profiles, repos } from '../../data/links';
 
 const skills = [
@@ -33,7 +34,7 @@ const beginnings = [
 	{ title: '2D Open-World Game', text: 'top-down exploration with enemies that react to the player', href: repos.openWorld },
 	{ title: '2D Fighting Game', text: 'stick-figure fighters with smooth animation blending', href: repos.fighting },
 	{ title: 'Flight Simulator', text: 'a biplane with lift, drag and thrust physics (Unity and Blender)' },
-	{ title: 'Chess Game', text: 'Python and Pygame, with legal moves highlighted', href: repos.chess },
+	{ title: 'Chess Game', text: 'Python and Pygame, with legal moves highlighted', href: repos.chess, secret: 'moves' },
 ];
 ---
 
@@ -109,7 +110,7 @@ const beginnings = [
 				{
 					beginnings.map((b) => (
 						<li>
-							<strong>{b.title}</strong>: {b.text}
+							<strong>{b.title}</strong>: <SecretText text={b.text} word={b.secret} id="games" />
 							{b.href && (
 								<>
 									{' · '}

@@ -26,3 +26,13 @@ pnpm-debug.log*
 # editor and Claude Code local settings
 .vscode/
 .claude/
+
+# Runner level model (ml/runner): virtual env, training logs, checkpoints and generated output
+ml/runner/.venv/
+ml/runner/data/
+ml/runner/checkpoints/
+ml/runner/output/
+__pycache__/
+
+# Wrangler local state (local D1 database etc.)
+.wrangler/

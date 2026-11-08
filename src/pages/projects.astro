@@ -1,6 +1,7 @@
 ---
 import ContentPage from '../layouts/ContentPage.astro';
 import Entry from '../components/Entry.astro';
+import Secret from '../components/Secret.astro';
 import { clubGames, games, papers, profiles, quantumBlog, repos } from '../data/links';
 
 const categories = [
@@ -82,7 +83,7 @@ const NDA_NOTE = 'Private client project — available to discuss in interviews.
 				links={[{ label: 'GitHub', href: repos.simplicial }]}
 			>
 				<p>
-					A Python program for experimenting with simplicial complexes, graph theory and 3D rendering. Completed as part of
+					A Python program for experimenting with simplicial complexes, <Secret id="projects">graph</Secret> theory and 3D rendering. Completed as part of
 					an Honors Learning Experience in Papa Sissokho’s Discrete Mathematics class.
 				</p>
 			</Entry>

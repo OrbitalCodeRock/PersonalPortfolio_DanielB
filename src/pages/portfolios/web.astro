@@ -2,6 +2,7 @@
 import ContentPage from '../../layouts/ContentPage.astro';
 import Entry from '../../components/Entry.astro';
 import ChipGroups from '../../components/ChipGroups.astro';
+import Secret from '../../components/Secret.astro';
 import { credentials, profiles, repos } from '../../data/links';
 
 const skills = [
@@ -31,7 +32,7 @@ const NDA_NOTE = 'Private client project — available to discuss in interviews.
 			I build complete web applications, both frontend and backend. Right now I work as a contract full-stack engineer on
 			two client projects. One is a national credentialing platform with payments, digital wallet passes and automated
 			testing and deployment. The other is a website redesign for a multi-location medical clinic, with a focus on search
-			engine optimization.
+			engine <Secret id="web">optimization</Secret>.
 		</p>
 	</div>
 
