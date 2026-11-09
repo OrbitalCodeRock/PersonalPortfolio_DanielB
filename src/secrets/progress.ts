@@ -82,10 +82,6 @@ export function allSolved(): boolean {
 	return solvedCount() === PUZZLES.length;
 }
 
-/** Letters of the hangman phrase revealed by solved puzzles. */
-export function revealedLetters(): Set<string> {
-	return new Set(PUZZLES.filter((p) => p.letter && isSolved(p.id)).map((p) => p.letter!));
-}
 
 export function getData<T>(key: string, fallback: T): T {
 	const v = load().data[key];

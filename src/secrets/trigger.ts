@@ -9,7 +9,7 @@ type Launcher = () => Promise<{ launch: () => void }>;
 // Each puzzle module in ./puzzles, loaded on first click.
 const modules = import.meta.glob<{ launch: () => void }>('./puzzles/*.ts');
 const file: Partial<Record<PuzzleId, string>> = {
-	about: 'hangman',
+	about: 'konami',
 	education: 'adventure',
 	now: 'runner',
 	games: 'chess',
@@ -18,6 +18,7 @@ const file: Partial<Record<PuzzleId, string>> = {
 	projects: 'graph',
 	skills: 'mystery',
 	timeline: 'simplex',
+	certs: 'slits',
 };
 const puzzles: Partial<Record<PuzzleId, Launcher>> = Object.fromEntries(
 	Object.entries(file).map(([id, name]) => [id, modules[`./puzzles/${name}.ts`]]),

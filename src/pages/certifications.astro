@@ -1,9 +1,20 @@
 ---
 import ContentPage from '../layouts/ContentPage.astro';
 import Entry from '../components/Entry.astro';
+import Secret from '../components/Secret.astro';
 import { credentials } from '../data/links';
 
-const groups = [
+interface Cert {
+	title: string;
+	issuer: string;
+	date: string;
+	about: string;
+	href: string;
+	/** A word in `about` that's a secret trigger (see components/Secret.astro). */
+	secret?: { word: string; id: 'certs' };
+}
+
+const groups: { title: string; certs: Cert[] }[] = [
 	{
 		title: 'Machine Learning & Data Science',
 		certs: [
@@ -68,8 +79,9 @@ const groups = [
 				title: 'Introduction to Quantum Computing',
 				issuer: 'Frontier Technology Institute',
 				date: 'May 2021',
-				about: 'Qubits, quantum gates and circuits, and the basics of quantum algorithms.',
+				about: 'Qubits, superposition and interference, quantum gates and circuits, and the basics of quantum algorithms.',
 				href: credentials.quantum,
+				secret: { word: 'interference', id: 'certs' },
 			},
 		],
 	},
@@ -107,7 +119,15 @@ const groups = [
 							subtitle={`${c.issuer} · ${c.date}`}
 							links={[{ label: 'View credential', href: c.href }]}
 						>
-							<p>{c.about}</p>
+							{c.secret ? (
+								<p>
+									{c.about.split(c.secret.word)[0]}
+									<Secret id={c.secret.id}>{c.secret.word}</Secret>
+									{c.about.split(c.secret.word).slice(1).join(c.secret.word)}
+								</p>
+							) : (
+								<p>{c.about}</p>
+							)}
 						</Entry>
 					))}
 				</div>
