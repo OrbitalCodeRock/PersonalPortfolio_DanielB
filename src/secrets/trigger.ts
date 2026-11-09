@@ -37,16 +37,21 @@ export function initSecrets() {
 		lastHover = word ?? null;
 	});
 
+	/** Puzzles still loading, so a second tap while the first loads (slow on phones) doesn't open it twice. */
+	const loading = new Set<PuzzleId>();
 	const activate = async (word: HTMLElement) => {
 		const id = word.dataset.secret as PuzzleId;
 		const loader = puzzles[id];
-		if (!loader) return;
+		if (!loader || loading.has(id)) return;
+		loading.add(id);
 		word.classList.add('is-awake');
 		chime('open');
 		try {
 			(await loader()).launch();
 		} catch (err) {
 			console.error('Secret failed to load', err);
+		} finally {
+			loading.delete(id);
 		}
 	};
 
@@ -82,5 +87,7 @@ export function applyTheme() {
 	if (toggle) {
 		toggle.hidden = !p.unlocked;
 		toggle.setAttribute('aria-pressed', String(!!p.theme));
+		// Say which way it's set, so a tap visibly does something.
+		toggle.textContent = `✦ Aurora: ${p.theme ? 'on' : 'off'}`;
 	}
 }
