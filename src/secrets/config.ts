@@ -50,8 +50,8 @@ export const SKY_TARGET = {
 };
 
 /**
- * The chess puzzle: Légal's mate from the opening position. The sky view hint shows White's
- * moves; the board plays Black's replies itself. Each ply is [from, to] in square names.
+ * The chess puzzle: Légal's mate from the opening position. The sky view hint gives White's
+ * opening and a riddle for the rest; the board plays Black's replies itself. Each ply is [from, to] in square names.
  */
 export const CHESS_LINE: { san: string; from: string; to: string }[] = [
 	{ san: 'e4', from: 'e2', to: 'e4' },
@@ -69,5 +69,8 @@ export const CHESS_LINE: { san: string; from: string; to: string }[] = [
 	{ san: 'Nd5#', from: 'c3', to: 'd5' },
 ];
 
-/** The hint shown in the sky view: White's moves only. */
-export const CHESS_HINT = CHESS_LINE.filter((_, i) => i % 2 === 0).map((m) => m.san);
+/** The hint shown in the sky view: White's first four moves, then the riddle below for the finish. */
+export const CHESS_HINT = CHESS_LINE.filter((_, i) => i % 2 === 0).map((m) => m.san).slice(0, 4);
+
+/** The rest of Légal's mate, as a riddle: Nxe5 (giving up the queen), Bxf7+, Nd5#. */
+export const CHESS_RIDDLE = ['Let them take the queen. A bishop checks,', 'a knight closes the door.'];

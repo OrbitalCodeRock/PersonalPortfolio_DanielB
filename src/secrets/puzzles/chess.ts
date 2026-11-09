@@ -1,9 +1,10 @@
 // "Written in the Stars": the chess puzzle for the Game Development page ("moves").
 // The player is White and must replay CHESS_LINE (Légal's mate) from the opening position. The sky
-// view shows White's moves (CHESS_HINT); the board answers each correct move with Black's reply.
+// view shows White's opening (CHESS_HINT) and a riddle for the finish (CHESS_RIDDLE); the board answers
+// each correct move with Black's reply.
 // Moves only need the right shape for their piece (no check rules); a well-shaped move that isn't
 // the next one in the line slides back.
-import { CHESS_HINT, CHESS_LINE } from '../config';
+import { CHESS_HINT, CHESS_LINE, CHESS_RIDDLE } from '../config';
 import { chime, openWindow, solve } from '../ui';
 import { isSolved } from '../progress';
 
@@ -174,7 +175,7 @@ export function launch(): void {
 	const root = document.createElement('div');
 	root.className = 'chs';
 	const memory = isSolved('sky')
-		? `<p class="chs-memory">Remembered from the night sky: ${CHESS_HINT.map((m) => `<b>${m}</b>`).join(' · ')}</p>`
+		? `<p class="chs-memory">Remembered from the night sky: ${CHESS_HINT.map((m) => `<b>${m}</b>`).join(' · ')} … <i>“${CHESS_RIDDLE.join(' ')}”</i></p>`
 		: '';
 	root.innerHTML = `
 		${already ? '<p class="secret-hint chs-tag">You’ve played this game to its end before. The board is yours to replay.</p>' : ''}

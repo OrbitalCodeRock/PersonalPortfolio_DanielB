@@ -69,19 +69,21 @@ export const HOLES: Hole[] = [
 		hint: 'Water lies in some of the low ground. Roll in and you play again from where you hit, a stroke down.',
 		bumps: [
 			b(3.4, 0.62, -1.15, 0.26), // the hole
-			b(1.05, 0.8, -0.4, 0.2), // shallow hollows, each with a pond in it
-			b(2.55, 2.45, -0.4, 0.2),
-			b(1.9, 1.95, -0.35, 0.18),
-			b(2.2, 1.25, 0.6, 0.34),
-			b(1.2, 1.75, 0.5, 0.28),
-			b(3.05, 1.55, 0.5, 0.26),
+			// Shallow dips, each holding a pond, either side of the straight line. Keep them shallow and off
+			// the tee's exits: deep hollows funnel every missed shot into the water.
+			b(1.35, 1.25, -0.2, 0.2),
+			b(2.3, 2.35, -0.2, 0.2),
+			b(2.95, 1.4, -0.2, 0.18),
+			b(2.0, 1.65, 0.7, 0.32), // a hill across the middle, so the straight line isn't the easy line
 			b(0.4, 1.3, 0.4, 0.3),
-			b(2.85, 0.35, 0.35, 0.22),
+			b(1.0, 0.5, 0.35, 0.25),
+			b(3.0, 2.5, 0.4, 0.3),
+			b(2.6, 0.3, 0.3, 0.2),
 		],
 		ponds: [
-			{ x: 1.05, y: 0.8, r: 0.13 },
-			{ x: 1.9, y: 1.95, r: 0.12 },
-			{ x: 2.55, y: 2.45, r: 0.13 },
+			{ x: 1.35, y: 1.25, r: 0.16 },
+			{ x: 2.3, y: 2.35, r: 0.16 },
+			{ x: 2.95, y: 1.4, r: 0.15 },
 		],
 		start: { x: 0.5, y: 2.55 },
 		hole: { x: 3.4, y: 0.62 },

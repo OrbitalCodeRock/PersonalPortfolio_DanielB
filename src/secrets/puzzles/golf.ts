@@ -320,8 +320,13 @@ export function launch(): void {
 		if (power < 0.03) return null;
 		return { vx: (dx / len) * power * VMAX, vy: (dy / len) * power * VMAX, power };
 	};
+	// A ball can be hit once it's at rest. On a moving hole the ground keeps nudging the ball, so it may never
+	// fully stop: there it can be hit whenever it's only creeping along.
+	const CREEP = 1.0;
+	const canShoot = () => !won && !sinking && !splash && (ball.rest || (moves(hole) && Math.hypot(ball.vx, ball.vy) < CREEP));
 	const onDown = (e: PointerEvent) => {
-		if (won || sinking || splash || !ball.rest || aim) return;
+		// Aiming can start any time (even mid-roll); the shot is taken on release if the ball can be hit then.
+		if (won || sinking || splash || aim) return;
 		e.preventDefault();
 		const [x, y] = toWorld(e);
 		aim = { sx: x, sy: y, cx: x, cy: y, id: e.pointerId };
@@ -337,8 +342,13 @@ export function launch(): void {
 		if (!aim || e.pointerId !== aim.id) return;
 		const shot = shotFromAim();
 		aim = null;
-		// The ground can start a resting ball rolling while you aim; then the shot doesn't count.
-		if (!shot || e.type === 'pointercancel' || !ball.rest) return;
+		if (!shot || e.type === 'pointercancel') return;
+		if (!canShoot()) {
+			notice = 'Wait for the ball to slow down';
+			noticeT = 1.5;
+			updateStrokes();
+			return;
+		}
 		shotFrom = { x: ball.x, y: ball.y };
 		ball.vx = shot.vx;
 		ball.vy = shot.vy;
@@ -391,7 +401,10 @@ export function launch(): void {
 
 	const physics = (dt: number) => {
 		time += dt;
-		noticeT = Math.max(0, noticeT - dt);
+		if (noticeT > 0) {
+			noticeT = Math.max(0, noticeT - dt);
+			if (noticeT === 0) updateStrokes();
+		}
 		if (sinking) {
 			sinking += dt;
 			ball.x = lerp(ball.x, hole.hole.x, Math.min(1, dt * 10));
@@ -516,7 +529,7 @@ export function launch(): void {
 			ctx.arc(ball.x * s, ball.y * s, br, 0, Math.PI * 2);
 			ctx.fill();
 			ctx.restore();
-			if (ball.rest && !won && !aim) {
+			if (canShoot() && !aim) {
 				ctx.strokeStyle = `rgba(255,231,163,${0.35 + 0.25 * Math.sin(now / 300)})`;
 				ctx.lineWidth = Math.max(1, s * 0.006);
 				ctx.beginPath();
