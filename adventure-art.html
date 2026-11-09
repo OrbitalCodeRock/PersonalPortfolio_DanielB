@@ -1,0 +1,503 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Adventure Art Gallery</title><style>
+:root{color-scheme:dark}
+body{margin:0;padding:16px;background:#030603;color:#cfe9d6;font:14px/1.45 ui-monospace,'Cascadia Mono',Consolas,monospace}
+h1{color:#ffe7a3;font-size:18px;margin:0 0 4px} h2{color:#ffe7a3;font-size:15px;margin:28px 0 8px;border-bottom:1px solid #2f7a45;padding-bottom:4px}
+.intro{color:#74a582;margin:0 0 8px}
+main{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,380px),1fr));gap:12px}
+h2{grid-column:1/-1}
+article{border:1px solid rgba(120,255,160,.25);border-radius:8px;padding:10px 12px;background:rgba(120,255,160,.03)}
+header{color:#ffe7a3} .num{color:#74a582} code{color:#74a582;font-size:12px;float:right}
+.when{color:#74a582;font-size:12px;font-style:italic;margin:2px 0 6px}
+pre{margin:0 0 8px;color:#8dffb0;line-height:1.12;overflow-x:auto}
+p{margin:0 0 4px}
+</style></head><body><h1>The Dungeon Below: every picture</h1>
+<p class="intro">60 entries, numbered so you can refer to them. Art in green, the text it appears with below it, and when it shows in italics.</p>
+<main><h2>Opening</h2><article><header><span class="num">1</span> <b>Title screen</b> <code>ART.title</code></header>
+<div class="when">When the terminal opens</div>
+<pre>          .        *         .
+     *        /\        .
+       /\    /  \   /\      *
+      /  \  /    \ /  \  /\
+     /    \/  /\  \    \/  \
+    /  /\  \ /  \  \  /\    \
+   /__/  \__/____\__\/  \____\
+      ||     ||      ||   ||
+  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     T H E   D U N G E O N
+           B E L O W</pre>
+<p>A text adventure. Type HELP at any time.</p></article><h2>Classes and companions</h2><article><header><span class="num">2</span> <b>Warrior</b> <code>ART.warrior</code></header>
+<div class="when">Choosing this class, recruiting its companion, or examining them</div>
+<pre>                         /\
+              ___        ||
+             /___\       ||
+            |=-=-=|      ||
+             \___/       ||
+      ______ /| |\    ___||___
+     |  ||  |=| |=====---||
+     |==++==| | |        ()
+     |  ||  | |_|
+      \ || /  / \
+       \||/  /   \
+        \/  _|   |_</pre>
+<p>You are a Warrior.</p><p>Tough and armored. CLEAVE hits twice as hard. Can FORCE a stuck gate.</p><p>Companion: Bryn, a broad-shouldered warrior honing a notched axe. "Gates are just doors that need persuading."</p><p>"About time someone asked." Bryn shoulders her axe.</p></article><article><header><span class="num">3</span> <b>Mage</b> <code>ART.mage</code></header>
+<div class="when">Choosing this class, recruiting its companion, or examining them</div>
+<pre>           /\         *
+          /  \       (o)
+         /____\       |
+         ( o o)       |
+        /|    |\      |
+       / |    | \_____|</pre>
+<p>You are a Mage.</p><p>Fragile. FIREBOLT scorches. Their staff lights any darkness.</p><p>Companion: Ithel, a young mage whose staff glows softly. "Dark places? I bring my own light."</p><p>Ithel's staff brightens. "Lead on. I'll keep the dark off you."</p></article><article><header><span class="num">4</span> <b>Rogue</b> <code>ART.rogue</code></header>
+<div class="when">Choosing this class, recruiting its companion, or examining them</div>
+<pre>              ___
+            .'   '.
+           /  ___  \
+          | |=o=o=| |
+          |  \ ~ /  |
+           \_'---'_/
+          /|  | |  |\
+         / |  | |  | \
+        /  |  | |  |  \=|==&gt;
+           |  | |  |
+           |__/ \__|
+           /_/   \_\ </pre>
+<p>You are a Rogue.</p><p>Quick. BACKSTAB strikes deep. Can PICK locks.</p><p>Companion: Sable, a rogue twirling a lockpick. "No lock has ever told me no."</p><p>Sable pockets her picks and grins. "Treasure, you said?"</p></article><article><header><span class="num">5</span> <b>Ranger</b> <code>ART.ranger</code></header>
+<div class="when">Choosing this class, recruiting its companion, or examining them</div>
+<pre>           ^
+          / \      |\
+         ( o o)    | \
+       __|  - |____|  )
+         |____|    | /
+         /    \    |/</pre>
+<p>You are a Ranger.</p><p>Steady. VOLLEY looses two arrows. Can TRACK hidden trails.</p><p>Companion: Wren, a quiet ranger with mud on his boots. "Everything leaves a trail."</p><p>Wren strings his bow without a word and follows you out.</p></article><h2>Rooms</h2><article><header><span class="num">6</span> <b>Forest Clearing</b> <code>ART.forest</code></header>
+<div class="when">First visit, and LOOK</div>
+<pre>   ^     ^    ^^     ^     ^
+  /|\   /|\  /||\   /|\   /|\
+ //|\\ //|\\//||\\ //|\\ //|\\
+   |     |    ||     |     |
+ ,,|,,,,,|,,,,||,,,,,|,,,,,|,,</pre>
+<p>Pines crowd a quiet clearing; moss swallows your footsteps. A trail runs north to an enormous oak, a smoke-stained hut leans to the west, a stream murmurs to the east, and a cart road winds south toward chimney smoke.</p></article><article><header><span class="num">7</span> <b>The Hollow Oak</b> <code>ART.oak</code></header>
+<div class="when">First visit, and LOOK</div>
+<pre>        .-~~~~~~~~-.
+      .~  ~ ~~  ~ ~  ~.
+     (  ~~  ~ ~~  ~~   )
+      '~-._  \ /  _.-~'
+           |  V  |
+           | /|  |
+           |/ |  |
+     ,,,,__|__|__|__,,,,</pre>
+<p>An oak older than the village, split by lightning and somehow still alive. Words are carved into the scar. Through the trees to the east, grey shapes stand in a ring.</p></article><article><header><span class="num">8</span> <b>The Standing Stones</b> <code>ART.stones</code></header>
+<div class="when">First visit, and LOOK</div>
+<pre>          _      _      _
+         | |    | |    | |
+    _    |_|    |_|    |_|    _
+   | |  _                _   | |
+   | | | |              | |  | |
+   | | | |              | |  | |
+  ,|_|,|_|,,,,,,,,,,,,,,|_|,,|_|,</pre>
+<p>Seven grey stones stand in a ring, leaning inward as if listening to the ground. They face every way the wind can blow.</p></article><article><header><span class="num">9</span> <b>Babbling Brook</b> <code>ART.brook</code></header>
+<div class="when">First visit, and LOOK</div>
+<pre>   ^    ^              ^    ^
+  /|\  /|\            /|\  /|\
+   |    |  ~  ~  ~  ~  |    |
+ ~ ~ ~~ ~ ~ ~~ ~ ~~ ~ ~ ~~ ~ ~
+   ~~ o ~ ~~ o ~~ ~ ~ o ~~ ~
+ ~ ~ ~~ ~ ~ ~~ ~ ~~ ~ ~ ~~ ~ ~</pre>
+<p>Cold water chatters over pebbles. Upstream, to the north, a ring of grey stones shows between the trunks.</p></article><article><header><span class="num">10</span> <b>Hunter's Hut</b> <code>ART.hut</code></header>
+<div class="when">First visit, and LOOK</div>
+<pre>            (  )
+             ) (
+        _____||_______
+       /   /      \   \
+      /___/________\___\
+       |  _    ||  _   |
+       | |_|   || |_|  |
+       |_______||______|</pre>
+<p>A one-room hut, empty for years: a cot, a cold hearth, a dusty shelf, and a leather journal on the table.</p></article><article><header><span class="num">11</span> <b>Old Road</b> <code>ART.road</code></header>
+<div class="when">First visit, and LOOK</div>
+<pre>    ^    ^      ^    ^      _____
+   /|\  /|\    /|\  /|\    |ASH- |&gt;
+  //|\\//|\\  //|\\//|\\   |FORD |
+    |    |      |    |       ||
+      ___________            ||
+     |___________|__,        ||
+      (+)      (+)           ||
+ ~.~~~~.~~~~~.~~~~.~~~~.~~~~~||~~.</pre>
+<p>A rutted road between the pines. A signpost leans at the crossing.</p></article><article><header><span class="num">12</span> <b>Ashford</b> <code>ART.village</code></header>
+<div class="when">First visit, and LOOK</div>
+<pre>        _    ~ ~
+   /\  | |_  ~        /\
+  /  \ |  _|_/\____  /  \
+ /____\|_|  /  \   |/____\
+ | [] |    /____\  || [] |
+ |  _ |    | () |  ||  _ |
+ |_| ||____|____|__||_| ||</pre>
+<p>A small village gathered around a well. Warm light and noise spill from a tavern to the east; bundles of herbs hang outside a shop to the west. The road leads north into the forest.</p></article><article><header><span class="num">13</span> <b>The Lantern &amp; Lamb</b> <code>ART.tavern</code></header>
+<div class="when">First visit, and LOOK</div>
+<pre>       _____        _____
+      (_____)      (_____)
+      |     |]    [|     |
+      |  ~  |]    [|  ~  |
+      |_____|      |_____|
+    ~ the Lantern &amp; Lamb ~</pre>
+<p>Low beams, a crackling fire, the smell of stew. The innkeeper nods at you: "A bed's free for anyone brave or daft enough to go into those woods." (You can REST here.)</p></article><article><header><span class="num">14</span> <b>Herbalist</b> <code>ART.herbalist</code></header>
+<div class="when">First visit, and LOOK</div>
+<pre>      \|/    \|/    \|/
+       |  ,   |  ,   |
+    __[_]____[_]____[_]__
+   |   _      _      _   |
+   |  (_)    [_]    (_)  |
+   |_____________________|</pre>
+<p>Jars, roots and drying flowers. An old woman studies you for a long moment. "Going under the stones, are you? Take what's on the counter. Bring yourself back."</p></article><article><header><span class="num">15</span> <b>Hunters' Cellar</b> <code>ART.entrance</code></header>
+<div class="when">First visit, and LOOK</div>
+<pre>   _______________________
+  |  ___________________  |
+  | |  _______________  | |
+  | | |  ___________  | | |
+  | | | |  _______  | | | |
+  | | | | |  ___  | | | | |
+  |_|_|_|_|_|   |_|_|_|_|_|
+        steps going down</pre>
+<p>Worn steps climb to daylight. The cellar was dug long before the hunters found it: the far wall opens onto older stonework carved with sleeping faces. A passage runs south.</p></article><article><header><span class="num">16</span> <b>Guardroom</b> <code>ART.guardroom</code></header>
+<div class="when">First visit, and LOOK</div>
+<pre>    |  |  |  |        _____
+    |  |  |  |       /o   /|
+   _|__|__|__|_     /___o/ |
+  |____________|    | o  | /
+                    |__o_|/</pre>
+<p>Rotten weapon racks and a table of dice no one will finish rolling. Passages lead east and south; the cellar is north.</p></article><article><header><span class="num">17</span> <b>Crypt</b> <code>ART.crypt</code></header>
+<div class="when">First visit, and LOOK</div>
+<pre>   _________________________
+  | .--.  .--.  .--.  .--.  |
+  | |()|  |()|  |  |  |()|  |
+  | |/\|  |/\|  |  |  |/\|  |
+  | '--'  '--'  '-o'  '--'  |
+  |_________________________|</pre>
+<p>Niches full of bones line the walls. A hook beside one empty niche looks made to hold a key.</p></article><article><header><span class="num">18</span> <b>Gate Hall</b> <code>ART.gate</code></header>
+<div class="when">First visit, and LOOK</div>
+<pre>   ____________________
+  | || || || || || || |
+  | || || || || || || |
+  | || || |[]|| || || |
+  | || || || || || || |
+  |_||_||_||_||_||_||_|</pre>
+<p>Stairs descend into darkness behind a heavy iron gate. The guardroom is back north.</p></article><article><header><span class="num">19</span> <b>Lower Landing</b> <code>ART.landing</code></header>
+<div class="when">First visit, and LOOK</div>
+<pre>   __
+     |__
+        |__
+           |__      ~ ~ ~ &gt;
+              |__     ~ ~ ~ &gt;
+                 |__________</pre>
+<p>Stairs climb back up to the gate. Cold, wet air flows from a passage to the east.</p></article><article><header><span class="num">20</span> <b>Flooded Hall</b> <code>ART.flooded</code></header>
+<div class="when">First visit, and LOOK</div>
+<pre>  |                         |
+  |  ~~  ~ ~~  ~~ ~  ~ ~~   |
+  | ~ ~~ ~  ~~ ~ ~~ ~~ ~ ~~ |
+  |~^~~~^~~~~~^~~~^~~~~^~~~~|
+  |  "  ~ ~ "~ ~ ~ "  ~ ~ " |</pre>
+<p>Knee-deep black water and a stink of wet fur. A passage leads south; the landing is west.</p></article><article><header><span class="num">21</span> <b>Rope Bridge</b> <code>ART.bridge</code></header>
+<div class="when">First visit, and LOOK</div>
+<pre>  ||                       ||
+  ||\_____________________/||
+  ||_|_|_|_|_|  |_|_|_|_|_|_||
+  /                         \
+ /    .      .      .     .  \ </pre>
+<p>A bridge of rope and rotten planks sways over a chasm. On the far side, stairs go down toward a cold blue glow. The flooded hall is back north.</p></article><article><header><span class="num">22</span> <b>Warden's Hall</b> <code>ART.wardenHall</code></header>
+<div class="when">First visit, and LOOK</div>
+<pre>     (~)       .-'''-.      (~)
+    \___/    .'  \|/  '.   \___/
+     | |    |  -- O --  |   | |
+     | |    |    /|\    |   | |
+    _|_|_    '.       .'   _|_|_</pre>
+<p>Blue fire burns in iron bowls with nothing to feed it. A round door to the east is carved with a rising sun. Stairs lead back up to the bridge.</p></article><article><header><span class="num">23</span> <b>The Vault</b> <code>ART.treasure</code></header>
+<div class="when">First visit, and LOOK</div>
+<pre>          .   *   .
+       *   _.---._   *
+         .'  /\  '.
+        /   /  \   \
+       |   &lt; () &gt;   |
+        \   \  /   /
+         '.  \/  .'
+           '-----'
+        THE  SUNSTONE</pre>
+<p>A small round room. On a plinth, wrapped in its own light, lies the Sunstone.</p></article><article><header><span class="num">24</span> <b>Any dark room, without light</b> <code>ART.dark</code></header>
+<div class="when">Entering a dark room with no light</div>
+<pre>     .    .         .
+             .  .         .
+        .          o o
+    .        .            .</pre>
+<p>It is pitch black. Water drips somewhere close. You could feel your way onward, carefully, or bring a light.</p></article><h2>Monsters</h2><article><header><span class="num">25</span> <b>Bone Sentry appears</b> <code>ART.sentry</code></header>
+<div class="when">Entering the Guardroom while it lives</div>
+<pre>           ___
+          [___]   |
+          (x x)   |
+           )-(    |
+        ---|=|----|
+           |=|    |
+           / \    |</pre>
+<p>A skeleton in a rusted helm clatters up from the dice table and levels a spear.</p></article><article><header><span class="num">26</span> <b>Bone Sentry defeated</b> <code>ART.sentryDown</code></header>
+<div class="when">When it dies</div>
+<pre>           ___
+         _[___]_   o  .
+       =(x_x)==-==--=  [:]</pre>
+<p>The Bone Sentry collapses into a heap of ribs and dice.</p></article><article><header><span class="num">27</span> <b>Crypt Ghoul appears</b> <code>ART.ghoul</code></header>
+<div class="when">Entering the Crypt while it lives</div>
+<pre>          ,---,
+         / o o \
+         \  ^  /
+      __/'-----'\__
+     /  /|     |\  \
+       / |     | \ </pre>
+<p>Something gaunt unfolds from an empty niche, sniffing at you.</p></article><article><header><span class="num">28</span> <b>Crypt Ghoul defeated</b> <code>ART.ghoulDown</code></header>
+<div class="when">When it dies</div>
+<pre>       .------.
+       | ,--, |
+       | |zz| |
+       | '--' |
+       '------'</pre>
+<p>The ghoul folds back into its niche and stays there.</p></article><article><header><span class="num">29</span> <b>Rat Swarm appears</b> <code>ART.rats</code></header>
+<div class="when">Entering the Flooded Hall while it lives</div>
+<pre>  ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~
+   ~(__^&gt;   ~(__^&gt;   ~(__^&gt;
+  ~ ~ ~(__^&gt;   ~(__^&gt;  ~ ~
+   ~(__^&gt;  ~ ~ ~ ~ ~(__^&gt;
+  ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~</pre>
+<p>The black water boils with rats, hundreds of them, all heading for your ankles.</p></article><article><header><span class="num">30</span> <b>Rat Swarm defeated</b> <code>ART.ratsDown</code></header>
+<div class="when">When it dies</div>
+<pre>   ~ ~ ~ ~ ~ ~ ~ ~ ~ ~
+       .      .     .
+   ~ ~ ~ ~ ~ ~ ~ ~ ~ ~</pre>
+<p>The swarm breaks apart and vanishes into the cracks.</p></article><article><header><span class="num">31</span> <b>Pale Weaver appears</b> <code>ART.spider</code></header>
+<div class="when">Entering the Rope Bridge while it lives</div>
+<pre>            ||
+      /\  .-""-.  /\
+     //\\/ o  o \//\\
+    //  \\  ''  //  \\
+   //    '-.__.-'    \\ </pre>
+<p>The bridge lurches. A spider the size of a cart hauls itself up over the ropes.</p></article><article><header><span class="num">32</span> <b>Pale Weaver defeated</b> <code>ART.spiderDown</code></header>
+<div class="when">When it dies</div>
+<pre>   ||_|_|_|_|  |_|_|_|_||
+   /          |          \
+              |
+              *
+          .   .   .</pre>
+<p>The Pale Weaver loses its grip and drops silently into the chasm.</p></article><article><header><span class="num">33</span> <b>Hollow Warden appears</b> <code>ART.warden</code></header>
+<div class="when">Entering the Warden's Hall while it lives</div>
+<pre>            (    )
+          (   ))   )
+           ) ((  (
+        .-'~~~~~~~'-.
+       /  _________  \
+      |  |~ ~ ~ ~ ~|  |
+      |  |_________|  |
+      |   ||| | |||   |
+       \  ||| | |||  /
+        '-----------'
+      __/           \__
+     /                 \ </pre>
+<p>An empty suit of armor, blue fire where a face should be, steps off its pedestal. "NONE. PASS."</p></article><article><header><span class="num">34</span> <b>Hollow Warden defeated</b> <code>ART.wardenDown</code></header>
+<div class="when">When it dies</div>
+<pre>         ___
+        /   \   _
+     __|_____|_/ \___    o-==
+    /____/   \_____/</pre>
+<p>The Warden's fire gutters out. Its armor crashes down, and a bone key rolls across the floor.</p></article><h2>Things to examine</h2><article><header><span class="num">35</span> <b>The Hollow Oak: carving</b> <code>ART.carving</code></header>
+<div class="when">EXAMINE CARVING / WORDS / SCAR / OAK / TREE</div>
+<pre>     _|_______________|_
+    | /\/ /\  |-|  \ \/ |
+    | |/\ |-|  |\/  /\  |
+    | \/\ /\/  |/  |-|  |
+    |___________________|</pre>
+<p>Carved deep, long ago: "WHAT THE HUNTERS HID, THE HUNTERS WROTE DOWN."</p></article><article><header><span class="num">36</span> <b>The Standing Stones: stone</b> <code>ART.ring</code></header>
+<div class="when">EXAMINE STONE / STONES / RING</div>
+<pre>            o
+       o         o
+     o      .      o
+       o         o</pre>
+<p>Seven stones, mossy and cold, set at the points of the compass and between. Heavy, but a stone could be pushed, if you knew which one.</p></article><article><header><span class="num">37</span> <b>Babbling Brook: water</b> <code>ART.water</code></header>
+<div class="when">EXAMINE WATER / BROOK / STREAM</div>
+<pre>     ~ ~ ~ ~ ~ ~ ~
+    \  ~ ~ ~ ~ ~  /
+     \___________/</pre>
+<p>Clear and cold. You drink. Refreshing, if not magical.</p></article><article><header><span class="num">38</span> <b>Hunter's Hut: journal</b> <code>ART.journal</code></header>
+<div class="when">EXAMINE JOURNAL / BOOK / TABLE</div>
+<pre>     _______ _______
+    /       Y       \
+   | ~~~~~~ | ~~~~~~ |
+   | ~~~~ ~ | ~~~ ~~ |
+   | ~~ ~~~ | ~~~~~  |
+   |________|________|</pre>
+<p>Most pages are tallies of deer. The last entry reads: "We sealed the old cellar under the ring of stones. Push the stone that greets the morning sun. The Warden still walks below; whatever it guards, let it guard it." A shakier hand adds: "Do not go down alone."</p></article><article><header><span class="num">39</span> <b>Hunter's Hut: shelf</b> <code>ART.dust</code></header>
+<div class="when">EXAMINE SHELF / HEARTH / COT</div>
+<pre>    __________________
+   |  .  :   .    .   |
+   |==================|
+   |   .    . :    .  |
+   |==================|</pre>
+<p>Dust, ash, and the smell of pine.</p></article><article><header><span class="num">40</span> <b>Old Road: sign</b> <code>ART.sign</code></header>
+<div class="when">EXAMINE SIGN / SIGNPOST / POST</div>
+<pre>      _________________
+     |  FOREST       ^ |
+     |  ASHFORD      v |
+      --------+--------
+              |
+              |</pre>
+<p>North: "FOREST - KEEP TO THE PATH". South: "ASHFORD".</p></article><article><header><span class="num">41</span> <b>Ashford: well</b> <code>ART.well</code></header>
+<div class="when">EXAMINE WELL</div>
+<pre>       ___________
+      /  _______  \
+     |  /       \  |
+     | |    *    | |
+     |  \_______/  |
+      \___________/</pre>
+<p>Deep. A coin glints at the bottom, well out of reach.</p></article><article><header><span class="num">42</span> <b>Hunters' Cellar: face</b> <code>ART.faces</code></header>
+<div class="when">EXAMINE FACE / FACES / WALL / CARVING</div>
+<pre>    .---.   .---.   .---.
+   ( - - ) ( - - ) ( - - )
+    \ = /   \ = /   \ = /
+     '-'     '-'     '-'</pre>
+<p>Dozens of carved faces, eyes closed. One of them, you'd swear, has just shut its eyes.</p></article><article><header><span class="num">43</span> <b>Gate Hall: gate</b> <code>ART.lock</code></header>
+<div class="when">EXAMINE GATE / LOCK / BARS</div>
+<pre>        .-----.
+       / .---. \
+      | |     | |
+     _|_|_____|_|_
+    |     ___     |
+    |    (   )    |
+    |     | |     |
+    |_____|_|_____|</pre>
+<p>Bars thick as your wrist and a big old lock. A key would do it. So would clever fingers, or a great deal of muscle.</p></article><article><header><span class="num">44</span> <b>Warden's Hall: door</b> <code>ART.sunDoor</code></header>
+<div class="when">EXAMINE DOOR / SUN / KEYHOLE</div>
+<pre>        .-'''''-.
+      .'  \ | /  '.
+     /  -- (O) --  \
+     |    / | \    |
+     \      o      /
+      '.         .'
+        '-.....-'</pre>
+<p>A round stone door with a sun carved in it. The keyhole is shaped like a knuckle bone.</p></article><h2>Items</h2><article><header><span class="num">45</span> <b>torch</b> <code>ART.torch</code></header>
+<div class="when">EXAMINE TORCH</div>
+<pre>        (  )
+       ( )( )
+        )()(
+        \==/
+         ||
+         ||
+         ||</pre>
+<p>A pitch-soaked torch. It lights dark places while you carry it, until it burns out.</p></article><article><header><span class="num">46</span> <b>potion</b> <code>ART.potion</code></header>
+<div class="when">EXAMINE POTION</div>
+<pre>        _
+       |=|
+       | |
+      /   \
+     | ~~~ |
+     |_____|</pre>
+<p>A small red vial. Restores 12 HP, or gets a fallen friend back on their feet.</p></article><article><header><span class="num">47</span> <b>iron key</b> <code>ART.ironKey</code></header>
+<div class="when">EXAMINE IRON KEY</div>
+<pre>     .--.
+    ( () )==========,=,=
+     '--'</pre>
+<p>A heavy iron key, cold as the crypt.</p></article><article><header><span class="num">48</span> <b>bone key</b> <code>ART.boneKey</code></header>
+<div class="when">EXAMINE BONE KEY</div>
+<pre>     _              _
+    (_)============(_)=,-,-</pre>
+<p>A key carved from a single knuckle bone.</p></article><article><header><span class="num">49</span> <b>sunstone</b> <code>ART.treasure</code></header>
+<div class="when">EXAMINE SUNSTONE</div>
+<pre>          .   *   .
+       *   _.---._   *
+         .'  /\  '.
+        /   /  \   \
+       |   &lt; () &gt;   |
+        \   \  /   /
+         '.  \/  .'
+           '-----'
+        THE  SUNSTONE</pre>
+<p>Warm as a summer afternoon. It wants to go up, toward the daylight.</p></article><h2>Story events</h2><article><header><span class="num">50</span> <b>Pushing the eastern stone</b> <code>ART.entrance</code></header>
+<div class="when">PUSH EAST at the stones</div>
+<pre>   _______________________
+  |  ___________________  |
+  | |  _______________  | |
+  | | |  ___________  | | |
+  | | | |  _______  | | | |
+  | | | | |  ___  | | | | |
+  |_|_|_|_|_|   |_|_|_|_|_|
+        steps going down</pre>
+<p>You set your shoulder to the eastern stone and push. It grinds aside on an old groove, and cold air sighs up from below.</p></article><article><header><span class="num">51</span> <b>Opening the gate</b> <code>ART.gateOpen</code></header>
+<div class="when">Unlock, PICK or FORCE the gate</div>
+<pre>  _________   ____________________
+ | || || ||| |       .  .  .      |
+ | || || ||| |      ________      |
+ | || |[]||| |     /________\     |
+ | || || ||| |    /__________\    |
+ |_||_||_||| |___/____________\___|</pre>
+<p>The iron key turns with a shriek of rust. The gate swings open.</p><p>(Rogue) Click, click... clunk. The gate swings open.</p><p>(Warrior) ...wrench the gate until the lock tears out of the stone. (-2 HP, worth it.)</p></article><article><header><span class="num">52</span> <b>Opening the vault</b> <code>ART.vaultOpen</code></header>
+<div class="when">Unlock or PICK the sun-door</div>
+<pre>      .-'''-.
+    .'  \|/  '.    _____
+   |  -- O --  |  |     |
+   |    /|\    |  |  *  |
+    '.       .'   |_____|
+      '-...-'  &gt;&gt;</pre>
+<p>The bone key slides in. The sun-door rolls aside on a hidden track.</p><p>(Rogue) ...work the strange lock for a long minute. The sun-door rolls aside.</p></article><article><header><span class="num">53</span> <b>Taking the Sunstone</b> <code>ART.quake</code></header>
+<div class="when">TAKE SUNSTONE</div>
+<pre>  __/\__/\___/\__/\___/\__
+    \/  \/  | \/  \/  \/
+     .   :  |  :   .
+    :  .  * | *  .  :
+          \ | /</pre>
+<p>You lift the Sunstone. Warmth floods up your arms... and the whole dungeon lurches. Stone grinds on stone, far above.</p><p>It's coming down. Get back to the surface! (12 moves)</p></article><article><header><span class="num">54</span> <b>Drinking a potion</b> <code>ART.potion</code></header>
+<div class="when">USE POTION</div>
+<pre>        _
+       |=|
+       | |
+      /   \
+     | ~~~ |
+     |_____|</pre>
+<p>You drink a potion. (30/34 HP)</p><p>or: Ithel gasps and is back on their feet.</p></article><article><header><span class="num">55</span> <b>Resting at the tavern</b> <code>ART.rest</code></header>
+<div class="when">REST in the tavern</div>
+<pre>      (   )  )              z
+       ) (  (             z
+     __(__)__)__      ___
+    |  /\/\/\/  |    (   )___
+    |  \/\/\/\  |    |_______|
+    |___________|    |       |</pre>
+<p>The innkeeper presses a fresh torch into your hands. "You'll want this."</p><p>You eat, sleep by the fire, and wake mended. Strength and spells restored.</p></article><article><header><span class="num">56</span> <b>Torch burns out</b> <code>ART.torchOut</code></header>
+<div class="when">After 10 dark rooms by torchlight</div>
+<pre>         ~
+        ~
+         ~
+        \==/
+         ||
+         ||</pre>
+<p>Your torch sputters and dies.</p></article><article><header><span class="num">57</span> <b>Ranger tracking</b> <code>ART.tracks</code></header>
+<div class="when">TRACK as a ranger, where there is a trail</div>
+<pre>     _        _
+    (_)  _   (_)  _
+        (_)      (_)   _
+           _          (_)
+          (_)</pre>
+<p>(The room's trail text, e.g.) Bootprints circle the ring and end at the EASTERN stone. Its base is scraped smooth, as if it has been moved many times.</p></article><article><header><span class="num">58</span> <b>Caved in</b> <code>ART.rubble</code></header>
+<div class="when">Running out of moves after taking the Sunstone (then the skull)</div>
+<pre>    _ /\ _/\__/\ _ /\ _/\
+   /_\/__\/_/\__\/_\/_\/_\
+  /__/_\/__\/__\/_/\__/\__\ </pre>
+<p>With a roar, the ceiling comes down. The Sunstone's light is the last thing you see.</p></article><article><header><span class="num">59</span> <b>Death</b> <code>ART.skull</code></header>
+<div class="when">Whole party falls, or the cave-in</div>
+<pre>        _______
+       /       \
+      |  () ()  |
+       \   ^   /
+        |||||||
+        '-----'</pre>
+<p>Your whole party lies still in the dark.</p><p>Your tale ends here. Type RESTART to begin again.</p></article><article><header><span class="num">60</span> <b>Victory</b> <code>ART.escape</code></header>
+<div class="when">Reaching the stones with the Sunstone</div>
+<pre>        \   |   /
+      -- .-"""-. --      ^   ^
+    --  (       )  --   /|\ /|\
+      -- '-...-' --    //|\\|\\
+        /   |   \        |   |
+   ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+        D A Y L I G H T</pre>
+<p>You burst up the cellar steps into the ring of stones. Behind you the earth groans, and the cellar folds shut for good.</p><p>The Sunstone blazes in your hands. For a moment the whole forest is lit like a summer morning.</p><p>*** YOU HAVE WON ***</p></article></main></body></html>

@@ -74,57 +74,8 @@ interface EnemyDef {
 	atk: [number, number];
 	intro: string;
 	death: string;
-}
-
-/** Keyed by the room the enemy guards. Damage dealt to them persists, so fleeing and resting works. */
-const ENEMIES: Record<string, EnemyDef> = {
-	guardroom: {
-		name: 'Bone Sentry', hp: 12, atk: [1, 3],
-		intro: 'A skeleton in a rusted helm clatters up from the dice table and levels a spear.',
-		death: 'The Bone Sentry collapses into a heap of ribs and dice.',
-	},
-	crypt: {
-		name: 'Crypt Ghoul', hp: 20, atk: [2, 5],
-		intro: 'Something gaunt unfolds from an empty niche, sniffing at you.',
-		death: 'The ghoul folds back into its niche and stays there.',
-	},
-	flooded: {
-		name: 'Rat Swarm', hp: 14, atk: [1, 3],
-		intro: 'The black water boils with rats, hundreds of them, all heading for your ankles.',
-		death: 'The swarm breaks apart and vanishes into the cracks.',
-	},
-	bridge: {
-		name: 'Pale Weaver', hp: 18, atk: [2, 4],
-		intro: 'The bridge lurches. A spider the size of a cart hauls itself up over the ropes.',
-		death: 'The Pale Weaver loses its grip and drops silently into the chasm.',
-	},
-	warden: {
-		name: 'Hollow Warden', hp: 34, atk: [3, 6],
-		intro: 'An empty suit of armor, blue fire where a face should be, steps off its pedestal. "NONE. PASS."',
-		death: 'The Warden\'s fire gutters out. Its armor crashes down, and a bone key rolls across the floor.',
-	},
-};
-
-interface Lock {
-	flag: string;
-	/** Hidden exits aren't listed until opened. */
-	hidden?: boolean;
-	label: string;
-	msg: string;
-}
-
-interface Room {
-	name: string;
-	area: 'forest' | 'village' | 'dungeon';
-	desc: string;
-	exits: Partial<Record<Dir, string>>;
-	locks?: Partial<Record<Dir, Lock>>;
-	dark?: boolean;
-	art?: string;
-	items?: string[];
-	/** 'word|synonym' → text shown by examine/read. */
-	features?: Record<string, string>;
-	track?: string;
+	art: string;
+	deadArt: string;
 }
 
 const ART = {
@@ -146,13 +97,15 @@ const ART = {
  //|\\ //|\\//||\\ //|\\ //|\\
    |     |    ||     |     |
  ,,|,,,,,|,,,,||,,,,,|,,,,,|,,`,
+	// Seven stones: three at the back of the ring, four nearer.
 	stones: String.raw`
-     _      _      _      _
-    | |    ( )    | |    ( )
-  _ | |  _ | | _  | |  _ | |
- | ||_| | ||_|| | |_| | ||_|
- |_|    |_|    |_|    |_|
- ,,,,,,,,,,,,,,,,,,,,,,,,,,,,`,
+          _      _      _
+         | |    | |    | |
+    _    |_|    |_|    |_|    _
+   | |  _                _   | |
+   | | | |              | |  | |
+   | | | |              | |  | |
+  ,|_|,|_|,,,,,,,,,,,,,,|_|,,|_|,`,
 	village: String.raw`
         _    ~ ~
    /\  | |_  ~        /\
@@ -177,16 +130,20 @@ const ART = {
   | || || |[]|| || || |
   | || || || || || || |
   |_||_||_||_||_||_||_|`,
+	// Close-up of the empty great helm: fire pours out of the top, and flame fills the visor slit.
 	warden: String.raw`
-         .-"""-.
-        /  ~ ~  \
-        | (o o) |   blue fire
-     ___|__---__|___
-    |   |  ===  |   |
-        |   |   |
-        |___|___|
-        /__/ \__\
-`,
+            (    )
+          (   ))   )
+           ) ((  (
+        .-'~~~~~~~'-.
+       /  _________  \
+      |  |~ ~ ~ ~ ~|  |
+      |  |_________|  |
+      |   ||| | |||   |
+       \  ||| | |||  /
+        '-----------'
+      __/           \__
+     /                 \ `,
 	treasure: String.raw`
           .   *   .
        *   _.---._   *
@@ -212,7 +169,406 @@ const ART = {
        \   ^   /
         |||||||
         '-----'`,
+
+	// ---- Rooms ----
+	oak: String.raw`
+        .-~~~~~~~~-.
+      .~  ~ ~~  ~ ~  ~.
+     (  ~~  ~ ~~  ~~   )
+      '~-._  \ /  _.-~'
+           |  V  |
+           | /|  |
+           |/ |  |
+     ,,,,__|__|__|__,,,,`,
+	brook: String.raw`
+   ^    ^              ^    ^
+  /|\  /|\            /|\  /|\
+   |    |  ~  ~  ~  ~  |    |
+ ~ ~ ~~ ~ ~ ~~ ~ ~~ ~ ~ ~~ ~ ~
+   ~~ o ~ ~~ o ~~ ~ ~ o ~~ ~
+ ~ ~ ~~ ~ ~ ~~ ~ ~~ ~ ~ ~~ ~ ~`,
+	hut: String.raw`
+            (  )
+             ) (
+        _____||_______
+       /   /      \   \
+      /___/________\___\
+       |  _    ||  _   |
+       | |_|   || |_|  |
+       |_______||______|`,
+	// Side view: an abandoned cart on a rutted track below the pines, and the old signpost.
+	road: String.raw`
+    ^    ^      ^    ^      _____
+   /|\  /|\    /|\  /|\    |ASH- |>
+  //|\\//|\\  //|\\//|\\   |FORD |
+    |    |      |    |       ||
+      ___________            ||
+     |___________|__,        ||
+      (+)      (+)           ||
+ ~.~~~~.~~~~~.~~~~.~~~~.~~~~~||~~.`,
+	tavern: String.raw`
+       _____        _____
+      (_____)      (_____)
+      |     |]    [|     |
+      |  ~  |]    [|  ~  |
+      |_____|      |_____|
+    ~ the Lantern & Lamb ~`,
+	herbalist: String.raw`
+      \|/    \|/    \|/
+       |  ,   |  ,   |
+    __[_]____[_]____[_]__
+   |   _      _      _   |
+   |  (_)    [_]    (_)  |
+   |_____________________|`,
+	guardroom: String.raw`
+    |  |  |  |        _____
+    |  |  |  |       /o   /|
+   _|__|__|__|_     /___o/ |
+  |____________|    | o  | /
+                    |__o_|/`,
+	crypt: String.raw`
+   _________________________
+  | .--.  .--.  .--.  .--.  |
+  | |()|  |()|  |  |  |()|  |
+  | |/\|  |/\|  |  |  |/\|  |
+  | '--'  '--'  '-o'  '--'  |
+  |_________________________|`,
+	landing: String.raw`
+   __
+     |__
+        |__
+           |__      ~ ~ ~ >
+              |__     ~ ~ ~ >
+                 |__________`,
+	flooded: String.raw`
+  |                         |
+  |  ~~  ~ ~~  ~~ ~  ~ ~~   |
+  | ~ ~~ ~  ~~ ~ ~~ ~~ ~ ~~ |
+  |~^~~~^~~~~~^~~~^~~~~^~~~~|
+  |  "  ~ ~ "~ ~ ~ "  ~ ~ " |`,
+	bridge: String.raw`
+  ||                       ||
+  ||\_____________________/||
+  ||_|_|_|_|_|  |_|_|_|_|_|_||
+  /                         \
+ /    .      .      .     .  \ `,
+	wardenHall: String.raw`
+     (~)       .-'''-.      (~)
+    \___/    .'  \|/  '.   \___/
+     | |    |  -- O --  |   | |
+     | |    |    /|\    |   | |
+    _|_|_    '.       .'   _|_|_`,
+	dark: String.raw`
+     .    .         .
+             .  .         .
+        .          o o
+    .        .            .`,
+
+	// ---- Classes and companions ----
+	// A knight in a great helm: cross-marked shield on one arm, sword in the other hand.
+	warrior: String.raw`
+                         /\
+              ___        ||
+             /___\       ||
+            |=-=-=|      ||
+             \___/       ||
+      ______ /| |\    ___||___
+     |  ||  |=| |=====---||
+     |==++==| | |        ()
+     |  ||  | |_|
+      \ || /  / \
+       \||/  /   \
+        \/  _|   |_`,
+	mage: String.raw`
+           /\         *
+          /  \       (o)
+         /____\       |
+         ( o o)       |
+        /|    |\      |
+       / |    | \_____|`,
+	// A hooded figure in a bandit's eye mask and a cloak, dagger in hand.
+	rogue: String.raw`
+              ___
+            .'   '.
+           /  ___  \
+          | |=o=o=| |
+          |  \ ~ /  |
+           \_'---'_/
+          /|  | |  |\
+         / |  | |  | \
+        /  |  | |  |  \=|==>
+           |  | |  |
+           |__/ \__|
+           /_/   \_\ `,
+	ranger: String.raw`
+           ^
+          / \      |\
+         ( o o)    | \
+       __|  - |____|  )
+         |____|    | /
+         /    \    |/`,
+
+	// ---- Monsters ----
+	sentry: String.raw`
+           ___
+          [___]   |
+          (x x)   |
+           )-(    |
+        ---|=|----|
+           |=|    |
+           / \    |`,
+	ghoul: String.raw`
+          ,---,
+         / o o \
+         \  ^  /
+      __/'-----'\__
+     /  /|     |\  \
+       / |     | \ `,
+	rats: String.raw`
+  ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~
+   ~(__^>   ~(__^>   ~(__^>
+  ~ ~ ~(__^>   ~(__^>  ~ ~
+   ~(__^>  ~ ~ ~ ~ ~(__^>
+  ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~`,
+	spider: String.raw`
+            ||
+      /\  .-""-.  /\
+     //\\/ o  o \//\\
+    //  \\  ''  //  \\
+   //    '-.__.-'    \\ `,
+	sentryDown: String.raw`
+           ___
+         _[___]_   o  .
+       =(x_x)==-==--=  [:]`,
+	ghoulDown: String.raw`
+       .------.
+       | ,--, |
+       | |zz| |
+       | '--' |
+       '------'`,
+	ratsDown: String.raw`
+   ~ ~ ~ ~ ~ ~ ~ ~ ~ ~
+       .      .     .
+   ~ ~ ~ ~ ~ ~ ~ ~ ~ ~`,
+	spiderDown: String.raw`
+   ||_|_|_|_|  |_|_|_|_||
+   /          |          \
+              |
+              *
+          .   .   .`,
+	wardenDown: String.raw`
+         ___
+        /   \   _
+     __|_____|_/ \___    o-==
+    /____/   \_____/`,
+
+	// ---- Things to examine ----
+	carving: String.raw`
+     _|_______________|_
+    | /\/ /\  |-|  \ \/ |
+    | |/\ |-|  |\/  /\  |
+    | \/\ /\/  |/  |-|  |
+    |___________________|`,
+	ring: String.raw`
+            o
+       o         o
+     o      .      o
+       o         o`,
+	water: String.raw`
+     ~ ~ ~ ~ ~ ~ ~
+    \  ~ ~ ~ ~ ~  /
+     \___________/`,
+	journal: String.raw`
+     _______ _______
+    /       Y       \
+   | ~~~~~~ | ~~~~~~ |
+   | ~~~~ ~ | ~~~ ~~ |
+   | ~~ ~~~ | ~~~~~  |
+   |________|________|`,
+	dust: String.raw`
+    __________________
+   |  .  :   .    .   |
+   |==================|
+   |   .    . :    .  |
+   |==================|`,
+	sign: String.raw`
+      _________________
+     |  FOREST       ^ |
+     |  ASHFORD      v |
+      --------+--------
+              |
+              |`,
+	well: String.raw`
+       ___________
+      /  _______  \
+     |  /       \  |
+     | |    *    | |
+     |  \_______/  |
+      \___________/`,
+	faces: String.raw`
+    .---.   .---.   .---.
+   ( - - ) ( - - ) ( - - )
+    \ = /   \ = /   \ = /
+     '-'     '-'     '-'`,
+	lock: String.raw`
+        .-----.
+       / .---. \
+      | |     | |
+     _|_|_____|_|_
+    |     ___     |
+    |    (   )    |
+    |     | |     |
+    |_____|_|_____|`,
+	sunDoor: String.raw`
+        .-'''''-.
+      .'  \ | /  '.
+     /  -- (O) --  \
+     |    / | \    |
+     \      o      /
+      '.         .'
+        '-.....-'`,
+
+	// ---- Items ----
+	torch: String.raw`
+        (  )
+       ( )( )
+        )()(
+        \==/
+         ||
+         ||
+         ||`,
+	potion: String.raw`
+        _
+       |=|
+       | |
+      /   \
+     | ~~~ |
+     |_____|`,
+	ironKey: String.raw`
+     .--.
+    ( () )==========,=,=
+     '--'`,
+	boneKey: String.raw`
+     _              _
+    (_)============(_)=,-,-`,
+
+	// ---- Events ----
+	// Seen from the front: the barred gate pulled aside, and the stairs dropping away through the doorway.
+	gateOpen: String.raw`
+  _________   ____________________
+ | || || ||| |       .  .  .      |
+ | || || ||| |      ________      |
+ | || |[]||| |     /________\     |
+ | || || ||| |    /__________\    |
+ |_||_||_||| |___/____________\___|`,
+	vaultOpen: String.raw`
+      .-'''-.
+    .'  \|/  '.    _____
+   |  -- O --  |  |     |
+   |    /|\    |  |  *  |
+    '.       .'   |_____|
+      '-...-'  >>`,
+	quake: String.raw`
+  __/\__/\___/\__/\___/\__
+    \/  \/  | \/  \/  \/
+     .   :  |  :   .
+    :  .  * | *  .  :
+          \ | /`,
+	rubble: String.raw`
+    _ /\ _/\__/\ _ /\ _/\
+   /_\/__\/_/\__\/_\/_\/_\
+  /__/_\/__\/__\/_/\__/\__\ `,
+	rest: String.raw`
+      (   )  )              z
+       ) (  (             z
+     __(__)__)__      ___
+    |  /\/\/\/  |    (   )___
+    |  \/\/\/\  |    |_______|
+    |___________|    |       |`,
+	torchOut: String.raw`
+         ~
+        ~
+         ~
+        \==/
+         ||
+         ||`,
+	tracks: String.raw`
+     _        _
+    (_)  _   (_)  _
+        (_)      (_)   _
+           _          (_)
+          (_)`,
 };
+
+/** Art for each companion's class, shown when you pick a class or someone joins. */
+const CLASS_ART: Record<ClassId, string> = { warrior: ART.warrior, mage: ART.mage, rogue: ART.rogue, ranger: ART.ranger };
+
+/** Shown by EXAMINE for each item. */
+const ITEM_ART: Record<string, string> = {
+	torch: ART.torch,
+	potion: ART.potion,
+	'iron key': ART.ironKey,
+	'bone key': ART.boneKey,
+	sunstone: ART.treasure,
+};
+
+/** Keyed by the room the enemy guards. Damage dealt to them persists, so fleeing and resting works. */
+const ENEMIES: Record<string, EnemyDef> = {
+	guardroom: {
+		name: 'Bone Sentry', hp: 12, atk: [1, 3],
+		intro: 'A skeleton in a rusted helm clatters up from the dice table and levels a spear.',
+		death: 'The Bone Sentry collapses into a heap of ribs and dice.',
+		art: ART.sentry, deadArt: ART.sentryDown,
+	},
+	crypt: {
+		name: 'Crypt Ghoul', hp: 20, atk: [2, 5],
+		intro: 'Something gaunt unfolds from an empty niche, sniffing at you.',
+		death: 'The ghoul folds back into its niche and stays there.',
+		art: ART.ghoul, deadArt: ART.ghoulDown,
+	},
+	flooded: {
+		name: 'Rat Swarm', hp: 14, atk: [1, 3],
+		intro: 'The black water boils with rats, hundreds of them, all heading for your ankles.',
+		death: 'The swarm breaks apart and vanishes into the cracks.',
+		art: ART.rats, deadArt: ART.ratsDown,
+	},
+	bridge: {
+		name: 'Pale Weaver', hp: 18, atk: [2, 4],
+		intro: 'The bridge lurches. A spider the size of a cart hauls itself up over the ropes.',
+		death: 'The Pale Weaver loses its grip and drops silently into the chasm.',
+		art: ART.spider, deadArt: ART.spiderDown,
+	},
+	warden: {
+		name: 'Hollow Warden', hp: 34, atk: [3, 6],
+		intro: 'An empty suit of armor, blue fire where a face should be, steps off its pedestal. "NONE. PASS."',
+		death: 'The Warden\'s fire gutters out. Its armor crashes down, and a bone key rolls across the floor.',
+		art: ART.warden, deadArt: ART.wardenDown,
+	},
+};
+
+interface Lock {
+	flag: string;
+	/** Hidden exits aren't listed until opened. */
+	hidden?: boolean;
+	label: string;
+	msg: string;
+}
+
+interface Room {
+	name: string;
+	area: 'forest' | 'village' | 'dungeon';
+	desc: string;
+	exits: Partial<Record<Dir, string>>;
+	locks?: Partial<Record<Dir, Lock>>;
+	dark?: boolean;
+	art?: string;
+	items?: string[];
+	/** 'word|synonym' → text shown by examine/read. */
+	features?: Record<string, string>;
+	/** Art shown with a feature's text, keyed like features. */
+	featureArt?: Record<string, string>;
+	track?: string;
+}
 
 const ROOMS: Record<string, Room> = {
 	clearing: {
@@ -222,10 +578,11 @@ const ROOMS: Record<string, Room> = {
 		track: 'Old hunters\' bootprints, years deep, wear a path between the hut and the north-east.',
 	},
 	oak: {
-		name: 'The Hollow Oak', area: 'forest',
+		name: 'The Hollow Oak', area: 'forest', art: ART.oak,
 		desc: 'An oak older than the village, split by lightning and somehow still alive. Words are carved into the scar. Through the trees to the east, grey shapes stand in a ring.',
 		exits: { s: 'clearing', e: 'stones' },
 		features: { 'carving|words|scar|oak|tree': 'Carved deep, long ago: "WHAT THE HUNTERS HID, THE HUNTERS WROTE DOWN."' },
+		featureArt: { 'carving|words|scar|oak|tree': ART.carving },
 		track: 'A badger came through. Nothing else.',
 	},
 	stones: {
@@ -237,17 +594,19 @@ const ROOMS: Record<string, Room> = {
 			'stone|stones|ring':
 				'Seven stones, mossy and cold, set at the points of the compass and between. Heavy, but a stone could be pushed, if you knew which one.',
 		},
+		featureArt: { 'stone|stones|ring': ART.ring },
 		track: 'Bootprints circle the ring and end at the EASTERN stone. Its base is scraped smooth, as if it has been moved many times.',
 	},
 	brook: {
-		name: 'Babbling Brook', area: 'forest',
+		name: 'Babbling Brook', area: 'forest', art: ART.brook,
 		desc: 'Cold water chatters over pebbles. Upstream, to the north, a ring of grey stones shows between the trunks.',
 		exits: { w: 'clearing', n: 'stones' },
 		features: { 'water|brook|stream': 'Clear and cold. You drink. Refreshing, if not magical.' },
+		featureArt: { 'water|brook|stream': ART.water },
 		track: 'Deer, mostly. And one set of boots heading north, upstream.',
 	},
 	hut: {
-		name: 'Hunter\'s Hut', area: 'forest',
+		name: 'Hunter\'s Hut', area: 'forest', art: ART.hut,
 		desc: 'A one-room hut, empty for years: a cot, a cold hearth, a dusty shelf, and a leather journal on the table.',
 		exits: { e: 'clearing' },
 		items: ['torch', 'potion'],
@@ -256,27 +615,30 @@ const ROOMS: Record<string, Room> = {
 				'Most pages are tallies of deer. The last entry reads: "We sealed the old cellar under the ring of stones. Push the stone that greets the morning sun. The Warden still walks below; whatever it guards, let it guard it." A shakier hand adds: "Do not go down alone."',
 			'shelf|hearth|cot': 'Dust, ash, and the smell of pine.',
 		},
+		featureArt: { 'journal|book|table': ART.journal, 'shelf|hearth|cot': ART.dust },
 		track: 'The prints here are all the same boots, coming and going.',
 	},
 	road: {
-		name: 'Old Road', area: 'forest',
+		name: 'Old Road', area: 'forest', art: ART.road,
 		desc: 'A rutted road between the pines. A signpost leans at the crossing.',
 		exits: { n: 'clearing', s: 'square' },
 		features: { 'sign|signpost|post': 'North: "FOREST - KEEP TO THE PATH". South: "ASHFORD".' },
+		featureArt: { 'sign|signpost|post': ART.sign },
 	},
 	square: {
 		name: 'Ashford', area: 'village', art: ART.village,
 		desc: 'A small village gathered around a well. Warm light and noise spill from a tavern to the east; bundles of herbs hang outside a shop to the west. The road leads north into the forest.',
 		exits: { n: 'road', e: 'tavern', w: 'herbalist' },
 		features: { well: 'Deep. A coin glints at the bottom, well out of reach.' },
+		featureArt: { well: ART.well },
 	},
 	tavern: {
-		name: 'The Lantern & Lamb', area: 'village',
+		name: 'The Lantern & Lamb', area: 'village', art: ART.tavern,
 		desc: 'Low beams, a crackling fire, the smell of stew. The innkeeper nods at you: "A bed\'s free for anyone brave or daft enough to go into those woods." (You can REST here.)',
 		exits: { w: 'square' },
 	},
 	herbalist: {
-		name: 'Herbalist', area: 'village',
+		name: 'Herbalist', area: 'village', art: ART.herbalist,
 		desc: 'Jars, roots and drying flowers. An old woman studies you for a long moment. "Going under the stones, are you? Take what\'s on the counter. Bring yourself back."',
 		exits: { e: 'square' },
 		items: ['potion', 'potion'],
@@ -286,15 +648,16 @@ const ROOMS: Record<string, Room> = {
 		desc: 'Worn steps climb to daylight. The cellar was dug long before the hunters found it: the far wall opens onto older stonework carved with sleeping faces. A passage runs south.',
 		exits: { u: 'stones', s: 'guardroom' },
 		features: { 'face|faces|wall|carving': 'Dozens of carved faces, eyes closed. One of them, you\'d swear, has just shut its eyes.' },
+		featureArt: { 'face|faces|wall|carving': ART.faces },
 	},
 	guardroom: {
-		name: 'Guardroom', area: 'dungeon',
+		name: 'Guardroom', area: 'dungeon', art: ART.guardroom,
 		desc: 'Rotten weapon racks and a table of dice no one will finish rolling. Passages lead east and south; the cellar is north.',
 		exits: { n: 'entrance', e: 'crypt', s: 'gatehall' },
 		items: ['potion'],
 	},
 	crypt: {
-		name: 'Crypt', area: 'dungeon',
+		name: 'Crypt', area: 'dungeon', art: ART.crypt,
 		desc: 'Niches full of bones line the walls. A hook beside one empty niche looks made to hold a key.',
 		exits: { w: 'guardroom' },
 		items: ['iron key'],
@@ -307,28 +670,30 @@ const ROOMS: Record<string, Room> = {
 		features: {
 			'gate|lock|bars': 'Bars thick as your wrist and a big old lock. A key would do it. So would clever fingers, or a great deal of muscle.',
 		},
+		featureArt: { 'gate|lock|bars': ART.lock },
 	},
 	landing: {
-		name: 'Lower Landing', area: 'dungeon', dark: true,
+		name: 'Lower Landing', area: 'dungeon', art: ART.landing, dark: true,
 		desc: 'Stairs climb back up to the gate. Cold, wet air flows from a passage to the east.',
 		exits: { u: 'gatehall', e: 'flooded' },
 	},
 	flooded: {
-		name: 'Flooded Hall', area: 'dungeon', dark: true,
+		name: 'Flooded Hall', area: 'dungeon', art: ART.flooded, dark: true,
 		desc: 'Knee-deep black water and a stink of wet fur. A passage leads south; the landing is west.',
 		exits: { w: 'landing', s: 'bridge' },
 	},
 	bridge: {
-		name: 'Rope Bridge', area: 'dungeon', dark: true,
+		name: 'Rope Bridge', area: 'dungeon', art: ART.bridge, dark: true,
 		desc: 'A bridge of rope and rotten planks sways over a chasm. On the far side, stairs go down toward a cold blue glow. The flooded hall is back north.',
 		exits: { n: 'flooded', d: 'warden' },
 	},
 	warden: {
-		name: 'Warden\'s Hall', area: 'dungeon', art: ART.warden,
+		name: 'Warden\'s Hall', area: 'dungeon', art: ART.wardenHall,
 		desc: 'Blue fire burns in iron bowls with nothing to feed it. A round door to the east is carved with a rising sun. Stairs lead back up to the bridge.',
 		exits: { u: 'bridge', e: 'vault' },
 		locks: { e: { flag: 'vault', label: 'sun-door, locked', msg: 'The sun-door is locked. The keyhole is shaped like a knuckle bone.' } },
 		features: { 'door|sun|keyhole': 'A round stone door with a sun carved in it. The keyhole is shaped like a knuckle bone.' },
+		featureArt: { 'door|sun|keyhole': ART.sunDoor },
 	},
 	vault: {
 		name: 'The Vault', area: 'dungeon', art: ART.treasure,
@@ -583,6 +948,7 @@ function openTerminal() {
 		const r = ROOMS[S.room];
 		line(r.name, 'title');
 		if (blind()) {
+			if (withArt) art(ART.dark);
 			line('It is pitch black. Water drips somewhere close. You could feel your way onward, carefully, or bring a light.');
 			return;
 		}
@@ -631,6 +997,7 @@ function openTerminal() {
 		S.party = [{ name: 'You', cls, hp: c.hp, max: c.hp, uses: c.uses, you: true }];
 		S.phase = 'play';
 		line('');
+		art(CLASS_ART[cls]);
 		line(`You are a ${c.label}.`, 'good');
 		line(
 			'The rumor brought you here: somewhere under these pines lies a dungeon older than the kingdom, and in it a stone that holds a sunrise. Many went looking. None came back with it. None of them, the villagers say, went with friends.',
@@ -646,10 +1013,11 @@ function openTerminal() {
 		start();
 	}
 
-	function die(msg: string) {
+	function die(msg: string, picture?: string) {
 		S.phase = 'over';
 		S.fight = null;
 		chime('error');
+		if (picture) art(picture);
 		line(msg, 'warn');
 		art(ART.skull);
 		line('Your tale ends here. Type RESTART to begin again.', 'good');
@@ -681,6 +1049,7 @@ function openTerminal() {
 				S.torch--;
 				if (S.torch === 0) {
 					S.inv.delete('torch');
+					art(ART.torchOut);
 					line('Your torch sputters and dies.', 'warn');
 				} else if (S.torch <= 3) line(`(Your torch is burning low.)`, 'dim');
 			}
@@ -688,7 +1057,7 @@ function openTerminal() {
 		if (id === 'stones' && has('sunstone')) return victory();
 		if (S.collapse > 0 && r.area === 'dungeon') {
 			S.collapse--;
-			if (S.collapse === 0) return die('With a roar, the ceiling comes down. The Sunstone\'s light is the last thing you see.');
+			if (S.collapse === 0) return die('With a roar, the ceiling comes down. The Sunstone\'s light is the last thing you see.', ART.rubble);
 		}
 		describe(!S.seen.has(id));
 		S.seen.add(id);
@@ -700,6 +1069,7 @@ function openTerminal() {
 		}
 		if (ENEMIES[id] && S.foes[id] > 0) {
 			S.fight = id;
+			art(ENEMIES[id].art);
 			line(ENEMIES[id].intro, 'warn');
 			line(`-- ${ENEMIES[id].name}: ${S.foes[id]} HP --  attack | special | use potion | switch | flee`, 'dim');
 		}
@@ -747,6 +1117,7 @@ function openTerminal() {
 		S.foes[f] = Math.max(0, S.foes[f] - dmg);
 		if (S.foes[f] > 0) return false;
 		S.fight = null;
+		art(ENEMIES[f].deadArt);
 		line(ENEMIES[f].death, 'good');
 		if (f === 'warden') S.items.warden.push('bone key');
 		const r = ROOMS[S.room];
@@ -820,6 +1191,7 @@ function openTerminal() {
 		if (item === 'torch') S.torch = TORCH_MOVES;
 		if (item === 'sunstone') {
 			S.collapse = COLLAPSE_MOVES;
+			art(ART.quake);
 			line('You lift the Sunstone. Warmth floods up your arms... and the whole dungeon lurches. Stone grinds on stone, far above.', 'warn');
 			line(`It's coming down. Get back to the surface! (${S.collapse} moves)`, 'warn');
 		}
@@ -839,20 +1211,28 @@ function openTerminal() {
 		line(featureText(what) ? 'That isn\'t something you can carry.' : 'You don\'t see that here.');
 	}
 
-	function featureText(what: string): string | undefined {
-		const f = ROOMS[S.room].features ?? {};
+	function featureText(what: string): { text: string; art?: string } | undefined {
+		const r = ROOMS[S.room];
+		const f = r.features ?? {};
 		const key = Object.keys(f).find((k) => k.split('|').some((w) => what.split(' ').includes(w)));
-		return key ? f[key] : undefined;
+		return key ? { text: f[key], art: r.featureArt?.[key] } : undefined;
 	}
 
 	function examine(what: string) {
 		if (!what || what === 'room' || what === 'around') return describe(true);
 		if (blind()) return line('You can\'t see a thing.');
 		const f = featureText(what);
-		if (f) return line(f);
+		if (f) {
+			if (f.art) art(f.art);
+			return line(f.text);
+		}
 		const owned = matchItem([...S.inv.keys()], what) ?? matchItem(S.items[S.room], what);
-		if (owned) return line(ITEM_TEXT[owned] ?? 'Nothing special.');
+		if (owned) {
+			if (ITEM_ART[owned]) art(ITEM_ART[owned]);
+			return line(ITEM_TEXT[owned] ?? 'Nothing special.');
+		}
 		const m = findMember(what);
+		if (m) art(CLASS_ART[m.cls]);
 		if (m) return line(`${label(m)}: ${m.hp}/${m.max} HP. ${CLASSES[m.cls].blurb}`);
 		line('You see nothing special about that.');
 	}
@@ -866,6 +1246,7 @@ function openTerminal() {
 		m.hp = Math.min(m.max, m.hp + POTION_HEAL);
 		S.inv.set('potion', S.inv.get('potion')! - 1);
 		if (!has('potion')) S.inv.delete('potion');
+		art(ART.potion);
 		line(was === 0 ? `${who(m)} ${v(m, 'gasp')} and ${m.you ? 'are' : 'is'} back on ${m.you ? 'your' : 'their'} feet. (${m.hp}/${m.max})` : `${who(m)} ${v(m, 'drink')} a potion. (${m.hp}/${m.max} HP)`, 'good');
 		if (S.fight) round();
 	}
@@ -882,6 +1263,7 @@ function openTerminal() {
 
 	function open(flag: 'gate' | 'vault', text: string) {
 		S.flags.add(flag);
+		art(flag === 'gate' ? ART.gateOpen : ART.vaultOpen);
 		line(text, 'good');
 	}
 
@@ -936,7 +1318,9 @@ function openTerminal() {
 		const m = me();
 		if (m.cls !== 'ranger') return line(`${who(m)} ${v(m, 'squint')} at the ground. Dirt. (A ranger would see more.)`);
 		if (blind()) return line('Too dark to read any trail.');
-		line(ROOMS[S.room].track ?? 'No trail worth following here.');
+		const trail = ROOMS[S.room].track;
+		if (trail) art(ART.tracks);
+		line(trail ?? 'No trail worth following here.');
 	}
 
 	function recruit(name: string) {
@@ -948,6 +1332,7 @@ function openTerminal() {
 		if (S.party.length >= 3) return line('Your party is full: you and two companions.');
 		const c = CLASSES[cls];
 		S.party.push({ name: c.ally, cls, hp: c.hp, max: c.hp, uses: c.uses, you: false });
+		art(CLASS_ART[cls]);
 		line(c.join, 'good');
 		line(`${c.ally} the ${c.label} joins your party. (SWITCH ${c.ally.toUpperCase()} to act as them.)`, 'dim');
 	}
@@ -969,6 +1354,7 @@ function openTerminal() {
 			m.uses = CLASSES[m.cls].uses;
 		}
 		S.torch = TORCH_MOVES;
+		art(ART.rest);
 		if (!has('torch')) {
 			addItem('torch');
 			line('The innkeeper presses a fresh torch into your hands. "You\'ll want this."');
