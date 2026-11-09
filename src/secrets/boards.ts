@@ -7,7 +7,7 @@
 // A visitor signs in once (an emailed link; see account.ts) and picks a unique name. After that, every
 // puzzle they solve is posted automatically; solves from before signing in, or made while offline, are
 // posted the next time a sync runs. So are their best runs.
-import { PHRASE, PUZZLES, type PuzzleId } from './config';
+import { PUZZLES, type PuzzleId } from './config';
 import { allSolved, isSolved, load, update } from './progress';
 import { toast } from './ui';
 import { AccountError, chooseName, getMe, mountTurnstile, signOut, startSignIn } from './account';
@@ -120,7 +120,7 @@ export function sync(): Promise<Partial<Record<BoardId, number>>> {
 			res = await fetch(API, {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ boards, phrase: boards.includes('all') ? PHRASE : undefined }),
+				body: JSON.stringify({ boards }),
 				credentials: 'same-origin',
 			});
 		} catch {

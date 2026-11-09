@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { getObserver, skyNow } from '../scripts/sky';
 import { getSkyLook, isInSky, placeInSky } from '../scripts/cosmos';
-import { CHESS_HINT, SKY_TARGET } from './config';
+import { CHESS_HINT, CHESS_RIDDLE, SKY_TARGET } from './config';
 import { openWindow, solve } from './ui';
 
 let ring: THREE.Group | null = null;
@@ -131,6 +131,8 @@ function showChessHint() {
 		<p>Something out there is playing a very old game. It sends only its own moves:</p>
 		<code class="secret-code" style="text-align:center;font-size:1.05rem;white-space:normal">${CHESS_HINT.map(
 			(m, i) => `${i + 1}. ${m}`,
-		).join('&nbsp;&nbsp; ')}</code>
+		).join('&nbsp;&nbsp; ')} …</code>
+		<p style="margin-top:1em">Then it stops sending. One last line:</p>
+		<p style="text-align:center;font-style:italic">“${CHESS_RIDDLE.join('<br>')}”</p>
 		<p style="margin-top:1em" class="secret-hint">Some games were written in the stars. Others were played here, once.</p>`;
 }

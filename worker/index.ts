@@ -9,8 +9,9 @@
 //
 // POST adds the signed-in player to each listed board they
 // aren't on yet. Rank = number of people on that board before you + 1, and posting a board again returns
-// the same rank. The "all" board also needs the hangman phrase. None of this is real anti-cheat: the site
-// is static, so a determined player could read every answer from the page's JavaScript.
+// the same rank. The "all" board needs the player to be on every puzzle's board first (or in the same
+// request). None of this is real anti-cheat: the site is static, so a determined player could read every
+// answer from the page's JavaScript.
 //
 // It also takes thumbs up/down ratings of rooftop runner segments (the Now page), for the level model:
 //
@@ -29,7 +30,7 @@
 //
 // Posting to a leaderboard needs a signed-in account with a name (worker/auth.ts); the player is the
 // account, whatever the request body says. Reading the boards is public.
-import { PHRASE, PUZZLES } from '../src/secrets/config';
+import { PUZZLES } from '../src/secrets/config';
 import { POOLS_VERSION, findRecipe } from '../src/secrets/runner/poolVersion';
 import { getAccount, handleAuth, type Account } from './auth';
 import { ID_RE, json, type D1Prepared, type Env } from './shared';
@@ -79,7 +80,7 @@ async function read(url: URL, env: Env): Promise<Response> {
 async function write(request: Request, env: Env): Promise<Response> {
 	const account = await poster(request, env);
 	if (account instanceof Response) return account;
-	let body: { boards?: unknown; phrase?: unknown };
+	let body: { boards?: unknown };
 	try {
 		body = await request.json();
 	} catch {
@@ -87,9 +88,15 @@ async function write(request: Request, env: Env): Promise<Response> {
 	}
 	const playerId = account.id;
 	const boards = Array.isArray(body.boards) ? [...new Set(body.boards.filter((b) => typeof b === 'string'))] : [];
-	const phrase = typeof body.phrase === 'string' ? body.phrase.trim().toUpperCase() : '';
 	if (boards.some((b) => !BOARDS.has(b))) return json({ error: 'No such board.' }, 400);
-	if (boards.includes('all') && phrase !== PHRASE) return json({ error: 'That isn’t the phrase.' }, 403);
+	if (boards.includes('all')) {
+		// Every puzzle board, counting the ones in this request.
+		const { results } = await env.DB.prepare("SELECT board FROM solves WHERE player_id = ? AND board != 'all'")
+			.bind(playerId)
+			.all<{ board: string }>();
+		const have = new Set([...results.map((r) => r.board), ...boards]);
+		if (PUZZLES.some((p) => !have.has(p.id))) return json({ error: 'Solve every secret first.' }, 403);
+	}
 
 	const ranks: Record<string, number> = {};
 	for (const board of boards) {

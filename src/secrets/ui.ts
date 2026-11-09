@@ -129,18 +129,15 @@ export function toast(html: string, ms = 5200): HTMLElement {
 }
 
 /**
- * Call when a puzzle is solved. Records it, plays a chime and says which hangman letter it revealed.
+ * Call when a puzzle is solved. Records it, plays a chime and offers the leaderboard.
  * Safe to call more than once.
  */
 export function solve(id: PuzzleId) {
 	if (!markSolved(id)) return;
 	const info = PUZZLES.find((p) => p.id === id);
 	chime('solve');
-	const letter = info?.letter
-		? ` The letter <b class="secret-letter">${info.letter}</b> appears somewhere you once typed on a <i>keyboard</i>.`
-		: '';
 	const t = toast(
-		`<strong>✦ Secret solved: ${info?.title ?? id}</strong>${letter ? `<br>${letter}` : ''}<br><button type="button" class="secret-toast-link">See who else found it</button>`,
+		`<strong>✦ Secret solved: ${info?.title ?? id}</strong><br><button type="button" class="secret-toast-link">See who else found it</button>`,
 		8000,
 	);
 	const boards = import('./boards');

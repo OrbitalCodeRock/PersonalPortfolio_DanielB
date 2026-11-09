@@ -2,7 +2,7 @@
 // Spoilers below: this file is the answer key.
 
 export type PuzzleId =
-	| 'about' // "keyboard": the hangman finale
+	| 'about' // "keyboard": enter the Konami code
 	| 'education' // "text": console-launched text adventure
 	| 'now' // "momentum": endless rooftop runner (last one minute)
 	| 'games' // "moves": the chess puzzle (needs the sky view hint)
@@ -11,34 +11,34 @@ export type PuzzleId =
 	| 'projects' // "graph": graph puzzle
 	| 'skills' // "libraries": paper mystery
 	| 'timeline' // "simplicial": simplicial complex viewer
-	| 'sky'; // sky view: coordinates + year reveal the ring (gives the chess hint)
+	| 'sky' // sky view: coordinates + year reveal the ring (gives the chess hint)
+	| 'certs'; // "interference": the double-slit experiment in a dark room
 
 export interface PuzzleInfo {
 	id: PuzzleId;
-	/** Where the trigger word lives, shown in the hangman's progress list. */
+	/** Where the trigger word lives. */
 	page: string;
 	/** Name shown once solved. */
 	title: string;
-	/** The phrase letter this puzzle reveals in the hangman (the hangman itself reveals none). */
-	letter?: string;
 }
 
-/** The hangman phrase. Its nine distinct letters are handed out one per puzzle below. */
-export const PHRASE = 'KEEP LOOKING UP';
-
-/** Puzzles that count toward finishing. Certifications and Employment are still being designed. */
+/** Puzzles that count toward finishing: solving every one opens the finale and the "Every secret" board. Employment is still being designed. */
 export const PUZZLES: PuzzleInfo[] = [
-	{ id: 'education', page: 'Education', title: 'The Dungeon Below', letter: 'K' },
-	{ id: 'now', page: 'Now', title: 'Conservation of Momentum', letter: 'E' },
-	{ id: 'web', page: 'Web Development', title: 'Global Minimum', letter: 'P' },
-	{ id: 'ml', page: 'Machine Learning', title: 'Memento Mori', letter: 'L' },
-	{ id: 'sky', page: 'Sky View', title: 'The Ring', letter: 'O' },
-	{ id: 'games', page: 'Game Development', title: 'Written in the Stars', letter: 'I' },
-	{ id: 'projects', page: 'Projects', title: 'Every Bridge Once', letter: 'N' },
-	{ id: 'skills', page: 'Skills', title: 'The Librarian’s Ledger', letter: 'G' },
-	{ id: 'timeline', page: 'Timeline', title: 'Higher Dimensions', letter: 'U' },
-	{ id: 'about', page: 'About Me', title: 'Keep Looking Up' },
+	{ id: 'education', page: 'Education', title: 'The Dungeon Below' },
+	{ id: 'now', page: 'Now', title: 'Conservation of Momentum' },
+	{ id: 'web', page: 'Web Development', title: 'Global Minimum' },
+	{ id: 'ml', page: 'Machine Learning', title: 'Memento Mori' },
+	{ id: 'sky', page: 'Sky View', title: 'The Ring' },
+	{ id: 'games', page: 'Game Development', title: 'Written in the Stars' },
+	{ id: 'projects', page: 'Projects', title: 'Every Bridge Once' },
+	{ id: 'skills', page: 'Skills', title: 'The Librarian’s Ledger' },
+	{ id: 'timeline', page: 'Timeline', title: 'Higher Dimensions' },
+	{ id: 'about', page: 'About Me', title: '30 Lives' },
+	{ id: 'certs', page: 'Certifications', title: 'Both Slits at Once' },
 ];
+
+/** The Konami code (About → "keyboard"), as KeyboardEvent.key values, lower-cased. */
+export const KONAMI = ['arrowup', 'arrowup', 'arrowdown', 'arrowdown', 'arrowleft', 'arrowright', 'arrowleft', 'arrowright', 'b', 'a'];
 
 /** The Ambassadors (1533) was painted in London. Solving the matrix puzzle shows these. */
 export const SKY_TARGET = {
@@ -50,8 +50,8 @@ export const SKY_TARGET = {
 };
 
 /**
- * The chess puzzle: Légal's mate from the opening position. The sky view hint shows White's
- * moves; the board plays Black's replies itself. Each ply is [from, to] in square names.
+ * The chess puzzle: Légal's mate from the opening position. The sky view hint gives White's
+ * opening and a riddle for the rest; the board plays Black's replies itself. Each ply is [from, to] in square names.
  */
 export const CHESS_LINE: { san: string; from: string; to: string }[] = [
 	{ san: 'e4', from: 'e2', to: 'e4' },
@@ -69,5 +69,8 @@ export const CHESS_LINE: { san: string; from: string; to: string }[] = [
 	{ san: 'Nd5#', from: 'c3', to: 'd5' },
 ];
 
-/** The hint shown in the sky view: White's moves only. */
-export const CHESS_HINT = CHESS_LINE.filter((_, i) => i % 2 === 0).map((m) => m.san);
+/** The hint shown in the sky view: White's first four moves, then the riddle below for the finish. */
+export const CHESS_HINT = CHESS_LINE.filter((_, i) => i % 2 === 0).map((m) => m.san).slice(0, 4);
+
+/** The rest of Légal's mate, as a riddle: Nxe5 (giving up the queen), Bxf7+, Nd5#. */
+export const CHESS_RIDDLE = ['Let them take the queen. A bishop checks,', 'a knight closes the door.'];

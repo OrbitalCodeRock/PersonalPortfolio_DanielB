@@ -68,7 +68,7 @@ const DOCS: PaperDoc[] = [
 			<div class="mys-cols">
 				<p class="mys-drop">The Lantern Street Public Library was the scene of a most audacious theft on Tuesday evening. The building closed as usual at six o’clock. When the head librarian, Mr. Ambrose Pell, returned from his supper at half past seven, he found the Rare Room unlocked and one of its five oak drawers standing open.</p>
 				<p>Mr. Pell declined to tell this newspaper what was taken, saying only that it was “irreplaceable” and that the thief “knew exactly what he was about.” Constable Hobb, who examined the room, agreed. “Nothing forced,” said he. “That drawer was lifted, not levered, by somebody who’d done it before.”</p>
-				<p>Five persons had business in the Rare Room on Tuesday. <b>Miss Odile Marchbank</b>, the assistant librarian, locked up at six and left at once for the railway. <b>Professor Silas Quell</b>, the astronomer, returned a volume shortly before closing and went directly to the Guildhall, where he dined with the Mayor before his seven o’clock lecture. <b>Mrs. Henrietta Vance</b>, a trustee, had earlier collected a document for the Founders’ Dinner. <b>Mr. Barnaby Fitch</b>, bookbinder, spent the afternoon at a drawer lock and states that he caught the 6.40 to Marlow to deliver an order. The page, <b>Master Tobias Wren</b>, was “otherwise engaged,” and the <i>Courier</i> will say no more of him until the sports page.</p>
+				<p>Five persons had business in the Rare Room on Tuesday. <b>Miss Odile Marchbank</b>, the assistant librarian, locked up at six and left at once for the railway. <b>Professor Silas Quell</b>, the astronomer, returned a volume shortly before closing and went directly to the Guildhall, where he dined with the Mayor before his seven o’clock lecture. <b>Mrs. Henrietta Vance</b>, a trustee, had earlier collected a document for the Founders’ Dinner. <b>Mr. Barnaby Fitch</b>, bookbinder, spent the afternoon mending a drawer lock in the Rare Room and states that he caught the 6.40 to Marlow to deliver an order. The page, <b>Master Tobias Wren</b>, was “otherwise engaged,” and the <i>Courier</i> will say no more of him until the sports page.</p>
 				<p>It is understood that a Mr. Cardew, a dealer in old books at Marlow, has lately written to the library asking after its “older holdings.” Mr. Pell called the inquiry “vulgar.”</p>
 			</div>`,
 	},
@@ -265,10 +265,13 @@ const CSS = `
 .mys-small-ad { font-size: 0.8rem; border: 1px solid rgba(43,36,25,0.5); padding: 4px 6px; text-align: left; }
 
 .mys-paper.is-letter { --ink: #20325a; background-color: #f7f1e3;
-	background-image: repeating-linear-gradient(transparent 0 27px, rgba(32,50,90,0.14) 27px 28px);
+	/* Ruled every 28px, the same as the line height, with each rule just under the text's baseline. The
+	   padding and paragraph gaps are whole lines so the writing never drifts off the rules. */
+	background-image: repeating-linear-gradient(transparent 0 22px, rgba(32,50,90,0.14) 22px 23px, transparent 23px 28px);
 	font-family: 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif; font-style: italic;
-	line-height: 28px; font-size: 1.02rem; padding: 26px 24px; }
-.mys-paper.is-letter p { margin: 0 0 14px; }
+	line-height: 28px; font-size: 1.02rem; padding: 28px 24px; }
+.mys-paper.is-letter p { margin: 0 0 28px; }
+.mys-paper.is-letter p:last-child { margin-bottom: 0; }
 .mys-letter-head { text-align: right; }
 .mys-sign { text-align: right; padding-right: 10%; font-size: 1.15rem; }
 
