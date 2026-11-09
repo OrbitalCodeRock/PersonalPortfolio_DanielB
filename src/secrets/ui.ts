@@ -28,6 +28,9 @@ export interface WindowOptions {
 const open = new Set<SecretWindow>();
 
 export function openWindow(opts: WindowOptions): SecretWindow {
+	// One window per puzzle: opening it again (say, a second tap on its word while the first was still
+	// loading) replaces the old copy instead of stacking a duplicate underneath.
+	for (const w of [...open]) if (w.root.getAttribute('aria-label') === opts.title) w.close();
 	const lastFocus = document.activeElement as HTMLElement | null;
 	const backdrop = document.createElement('div');
 	backdrop.className = 'secret-backdrop';

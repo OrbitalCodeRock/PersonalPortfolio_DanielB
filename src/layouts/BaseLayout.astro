@@ -82,8 +82,13 @@ const navLinks = [
 	document.addEventListener('astro:page-load', showSecretNav);
 	document.addEventListener('secrets:solved', showSecretNav);
 	// The footer toggle for the theme unlocked by finishing the puzzle hunt.
+	// A tap that some phones deliver twice would switch it straight back, so ignore repeats within 400 ms.
+	let lastToggle = 0;
 	document.addEventListener('click', (e) => {
 		if (!(e.target as Element).closest?.('.secret-theme-toggle')) return;
+		const now = performance.now();
+		if (now - lastToggle < 400) return;
+		lastToggle = now;
 		update((p) => {
 			p.theme = !p.theme;
 		});
@@ -132,9 +137,17 @@ const navLinks = [
 		display: flex;
 		gap: 8px 20px;
 		flex-wrap: wrap;
-		padding-block: 0 28px;
+		align-items: center;
+		/* Extra room under the footer on phones, so its links aren't right at the screen's bottom edge, where
+		   a tap tends to bring up the browser's toolbar instead of reaching the page. */
+		padding-block: 0 max(28px, calc(env(safe-area-inset-bottom) + 28px));
 		color: var(--text-muted);
 		font-size: 0.8rem;
+	}
+	@media (pointer: coarse) {
+		.site-footer {
+			padding-bottom: max(64px, calc(env(safe-area-inset-bottom) + 48px));
+		}
 	}
 	.site-footer a {
 		color: var(--text-muted);
