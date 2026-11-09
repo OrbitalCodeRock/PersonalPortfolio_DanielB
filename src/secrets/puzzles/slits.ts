@@ -7,7 +7,8 @@
 //  - A candle flame is a wide source, so the light reaching the two slits is only coherent enough to
 //    interfere when the slits are far from it: fringe visibility V = |sinc(s·d / (λ·L1))|.
 //  - The fringes are λ·L2 / d apart on the far wall, so they need room (L2) to spread wide enough to see.
-// Both hold only in a narrow stretch of the floor: far enough from the candle, not too close to the wall.
+// Both hold only in one stretch of the floor (about a third of the track): far enough from the candle,
+// not too close to the far wall.
 import { isSolved } from '../progress';
 import { chime, openWindow, solve } from '../ui';
 
@@ -31,8 +32,9 @@ const SLIT_D = 0.015; // slit separation
 const SLIT_A = 0.005; // slit width
 const CLOSEUP_CM = 4; // width of the far-wall close-up
 const RESOLVE_CM = 0.15; // fringes closer than this blur together
-const WIN_CONTRAST = 0.76;
-const HOLD = 1.3;
+// Clear fringes win anywhere in a stretch about a third of the track (x 443 to 614), held for under a second.
+const WIN_CONTRAST = 0.6;
+const HOLD = 0.8;
 const MATCH_LIFE = 10;
 
 const CSS = `
@@ -117,7 +119,9 @@ export function launch(): void {
 	let wallX = 700;
 	let dragWall: number | null = null;
 	let holdT = 0;
-	let won = isSolved(ID);
+	// Replays play out in full; `already` only changes the wording.
+	const already = isSolved(ID);
+	let won = false;
 	let wonFlash = 0;
 
 	function reset() {
@@ -129,7 +133,7 @@ export function launch(): void {
 		candleHeat = 0;
 		wallX = 700;
 		holdT = 0;
-		won = isSolved(ID);
+		won = false;
 		wonFlash = 0;
 		updateHint();
 	}
@@ -138,7 +142,7 @@ export function launch(): void {
 		hint.textContent = !candle
 			? matchLit
 				? 'Quick, hold the flame to the candle’s wick.'
-				: 'It’s dark. Drag the match quickly across the strip on top of the matchbox to light it.'
+				: `It’s dark. Drag the match quickly across the strip on top of the matchbox to light it.${already ? ' (You’ve solved this one before; play it again.)' : ''}`
 			: won
 				? 'Light went through both slits at once and interfered with itself.'
 				: 'Slide the slit wall along the floor (drag it, or use ← →) and watch the close-up of the far wall.';
@@ -263,10 +267,13 @@ export function launch(): void {
 		sparks = sparks.filter((s) => s.life > 0);
 		if (candle && !won) {
 			const g = geometry(wallX);
-			holdT = g.contrast > WIN_CONTRAST && dragWall === null ? holdT + dt : 0;
+			// Counts while the wall rests there, even with a finger or the mouse still on it.
+			holdT = g.contrast > WIN_CONTRAST ? holdT + dt : 0;
 			if (holdT > HOLD) {
 				won = true;
 				wonFlash = 1;
+				// solve() only celebrates the first time; a replay still gets its chime.
+				if (isSolved(ID)) chime('solve');
 				solve(ID);
 				updateHint();
 			}
