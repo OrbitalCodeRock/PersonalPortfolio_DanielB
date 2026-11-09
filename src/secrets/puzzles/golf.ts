@@ -389,7 +389,7 @@ export function launch(): void {
 		winBox.querySelector('strong')!.textContent = index === 0 ? 'Global minimum found' : last ? 'Course complete' : `Hole ${index + 1}: ${hole.name}`;
 		winBox.querySelector('span')!.textContent =
 			`Holed in ${strokes} stroke${strokes === 1 ? '' : 's'}.` +
-			(index === 0 ? ' No gradient descent can argue with that.' : '') +
+			(index === 0 ? ' Now that’s what I call supervised learning! (Not really.)' : '') +
 			(last && allPlayed ? ` Your best round: ${total} strokes over ${HOLES.length} holes.` : '');
 		winBox.querySelector('.golf-actions')!.innerHTML = `${
 			last

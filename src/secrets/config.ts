@@ -34,7 +34,7 @@ export const PUZZLES: PuzzleInfo[] = [
 	{ id: 'skills', page: 'Skills', title: 'The Librarian’s Ledger' },
 	{ id: 'timeline', page: 'Timeline', title: 'Higher Dimensions' },
 	{ id: 'about', page: 'About Me', title: '30 Lives' },
-	{ id: 'certs', page: 'Certifications', title: 'Both Slits at Once' },
+	{ id: 'certs', page: 'Certifications', title: 'Interference' },
 ];
 
 /** The Konami code (About → "keyboard"), as KeyboardEvent.key values, lower-cased. */
