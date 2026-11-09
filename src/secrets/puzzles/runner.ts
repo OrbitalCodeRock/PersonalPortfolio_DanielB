@@ -31,6 +31,7 @@ import { createRunnerSound } from '../runner/sound';
 import { setRecipePools } from '../runner/seeds';
 import { POOLS, POOLS_VERSION, findRecipe } from '../runner/poolVersion';
 import type { Recipe } from '../runner/levelgen';
+import { renderRunStrip, segmentThumb } from '../runner/preview';
 import { recordRun, type RunCategory } from '../runnerBoard';
 import { ordinal } from '../boards';
 
@@ -112,7 +113,9 @@ const CSS = `
 .run-tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .run-mode { color: var(--text-muted); font-size: 0.85rem; }
 .run-pick { position: absolute; inset: 0; overflow: auto; padding: 14px 16px; border-radius: 10px;
-	background: rgba(8, 10, 28, 0.96); color: #eef0ff; font-size: 0.88rem; display: grid; gap: 10px; align-content: start; }
+	background: rgba(8, 10, 28, 0.96); color: #eef0ff; font-size: 0.88rem; display: grid; gap: 10px; align-content: start;
+	/* Rows keep their full height and the panel scrolls; otherwise the scrolling card row gets squashed to fit. */
+	grid-auto-rows: max-content; }
 .run-pick[hidden] { display: none; }
 .run-pick h3 { margin: 0; font-size: 1.05rem; color: #ffe7a3; }
 .run-pick h4 { margin: 6px 0 2px; font-size: 0.85rem; color: var(--text-muted); font-weight: 600; }
@@ -126,6 +129,35 @@ const CSS = `
 	border: 1px solid rgba(255, 255, 255, 0.18); background: transparent; color: inherit; }
 .run-pick-row button:hover, .run-pick-row button:focus-visible, .run-pick-chosen li button:hover { border-color: rgba(255, 231, 163, 0.7); }
 .run-pick-row span { color: var(--text-muted); font-size: 0.8rem; }
+.run-pick-preview { display: flex; gap: 8px; overflow-x: auto; margin: 0; padding: 2px 2px 8px; list-style: none;
+	min-height: 40px; align-items: stretch; scroll-snap-type: x proximity; }
+.run-pick-preview li { flex: none; scroll-snap-align: start; }
+.run-pick-preview figure { margin: 0; display: grid; gap: 3px; width: 172px; padding: 5px; border-radius: 8px;
+	border: 1px solid rgba(255, 231, 163, 0.35); background: rgba(255, 231, 163, 0.05); }
+.run-pick-preview img { display: block; width: 100%; height: auto; aspect-ratio: 200 / 96; border-radius: 4px; }
+.run-pick-preview figcaption { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 2px 6px;
+	font: 600 0.78rem ui-monospace, Consolas, monospace; color: #ffe7a3; }
+.run-pick-preview figcaption span { flex-basis: 100%; color: var(--text-muted); font-weight: 400; font-size: 0.72rem; }
+.run-pick-preview button { font: inherit; cursor: pointer; padding: 1px 7px; border-radius: 999px;
+	border: 1px solid rgba(255, 231, 163, 0.4); background: transparent; color: #ffe7a3; }
+.run-pick-preview button:hover, .run-pick-preview button:focus-visible { background: rgba(255, 231, 163, 0.16); }
+.run-pick-preview .is-new figure { animation: run-pick-in 0.35s ease-out; }
+@keyframes run-pick-in { from { transform: translateY(6px); opacity: 0; } }
+.run-peek { position: absolute; z-index: 5; pointer-events: none; width: 220px; padding: 6px; border-radius: 8px;
+	background: rgba(8, 10, 28, 0.98); border: 1px solid rgba(255, 231, 163, 0.45); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+	opacity: 0; transform: translateY(4px); transition: opacity 0.12s, transform 0.12s; }
+.run-peek.is-on { opacity: 1; transform: none; }
+.run-peek img { display: block; width: 100%; height: auto; aspect-ratio: 200 / 96; border-radius: 4px; }
+.run-peek p { margin: 5px 0 0; font: 600 0.75rem ui-monospace, Consolas, monospace; color: #ffe7a3; }
+.run-peek p span { color: var(--text-muted); font-weight: 400; }
+@media (hover: none) { .run-peek { display: none; } }
+.run-strip { display: flex; overflow-x: auto; gap: 0; padding-bottom: 8px; }
+.run-strip-seg { margin: 0; flex: none; display: grid; gap: 4px; }
+.run-strip-seg figcaption { font: 600 0.75rem ui-monospace, Consolas, monospace; color: #ffe7a3; padding-left: 4px;
+	border-left: 1px dashed rgba(255, 231, 163, 0.5); white-space: nowrap; }
+.run-strip-seg canvas { display: block; }
+.run-strip-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 8px 0 0; font-size: 0.8rem; color: var(--text-muted); }
+.run-strip-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
 .run-pick-actions { display: flex; gap: 8px; flex-wrap: wrap; position: sticky; bottom: -14px; padding: 8px 0; background: rgba(8, 10, 28, 0.96); }
 `;
 
@@ -170,6 +202,7 @@ export function launch(opts: LaunchOptions = {}): void {
 			</div>
 			<button type="button" class="secret-btn run-replay" hidden>↻ Replay this run <kbd>F</kbd></button>
 			<div class="run-pick" hidden role="dialog" aria-label="Choose segments"></div>
+			<div class="run-peek" aria-hidden="true"><img alt=""><p></p></div>
 		</div>
 		<div class="run-bar">
 			<p class="secret-hint">Jump: Space, ↑, W, or tap/click the game. Hold for a higher jump. R restarts. Rate a segment with 1 (👍) or 2 (👎).</p>
@@ -462,15 +495,24 @@ export function launch(opts: LaunchOptions = {}): void {
 	// The picker: segments from every band, in the order picked; they play after the intro roof.
 	let picking = false;
 	let picks: string[] = [];
+	/** Index of the card just added, so it slides in and the row scrolls to it. */
+	let justAdded = -1;
 	function renderPicker() {
 		picker.innerHTML = `
 			<h3>Choose segments</h3>
 			<p>Pick segments in the order you want them. They play after the first roof, then the run carries on with
 			random ones. Runs that start this way go on the leaderboard’s <b>Chosen</b> board.</p>
-			<ol class="run-pick-chosen" aria-label="Your segments (click one to remove it)">${
+			<ol class="run-pick-preview" aria-label="Your segments, in order">${
 				picks.length
-					? picks.map((id, i) => `<li><button type="button" data-remove="${i}" title="Remove">${id} ✕</button></li>`).join('')
-					: '<li><p>None yet.</p></li>'
+					? picks
+							.map((id, i) => {
+								const r = findRecipe(id)!;
+								return `<li${i === justAdded ? ' class="is-new"' : ''}><figure><img src="${segmentThumb(r)}" alt="Segment ${id}: ${r.features
+									.map((f) => f.type)
+									.join(', ')}"><figcaption><b>${i + 1}. ${id}</b><button type="button" data-remove="${i}" title="Remove ${id}" aria-label="Remove ${id}">✕</button><span>${bandName(r.tier)}</span></figcaption></figure></li>`;
+							})
+							.join('')
+					: '<li><p>None yet. Add segments below and they’ll appear here.</p></li>'
 			}</ol>
 			<div class="run-pick-bands">${POOLS.map(
 				(pool, t) =>
@@ -485,6 +527,7 @@ export function launch(opts: LaunchOptions = {}): void {
 			).join('')}</div>
 			<div class="run-pick-actions">
 				<button type="button" class="secret-btn" data-act="play" ${picks.length ? '' : 'disabled'}>Play these</button>
+				<button type="button" class="secret-btn" data-act="full" ${picks.length ? '' : 'disabled'}>View the whole run</button>
 				<button type="button" class="secret-btn" data-act="clear" ${picks.length ? '' : 'disabled'}>Clear</button>
 				<button type="button" class="secret-btn" data-act="close">Cancel</button>
 			</div>`;
@@ -498,6 +541,7 @@ export function launch(opts: LaunchOptions = {}): void {
 		picker.querySelector<HTMLElement>('[data-add]')?.focus();
 	}
 	function closePicker() {
+		hidePeek();
 		picking = false;
 		picker.hidden = true;
 		chooseBtn.focus();
@@ -506,24 +550,97 @@ export function launch(opts: LaunchOptions = {}): void {
 	picker.addEventListener('click', (e) => {
 		const el = (e.target as Element).closest<HTMLElement>('button');
 		if (!el) return;
+		justAdded = -1;
 		if (el.dataset.add) {
-			if (picks.length < 60) picks.push(el.dataset.add);
+			if (picks.length < 60) {
+				picks.push(el.dataset.add);
+				justAdded = picks.length - 1;
+			}
 		} else if (el.dataset.remove) {
 			picks.splice(Number(el.dataset.remove), 1);
 		} else if (el.dataset.act === 'clear') {
 			picks = [];
 		} else if (el.dataset.act === 'close') {
 			return closePicker();
+		} else if (el.dataset.act === 'full') {
+			return showWholeRun();
 		} else if (el.dataset.act === 'play') {
 			setData('now-picks', picks);
 			closePicker();
 			setPlan({ label: 'Your segments', segments: picks.map((id) => ({ v: POOLS_VERSION, recipe: findRecipe(id)! })) });
 			return;
 		}
+		hidePeek();
 		const scroll = picker.scrollTop;
+		const row = picker.querySelector<HTMLElement>('.run-pick-preview');
+		const rowScroll = row?.scrollLeft ?? 0;
 		renderPicker();
 		picker.scrollTop = scroll;
+		const newRow = picker.querySelector<HTMLElement>('.run-pick-preview')!;
+		newRow.scrollLeft = rowScroll;
+		if (justAdded >= 0) newRow.lastElementChild?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'end' });
 	});
+
+	// Hovering (or tabbing to) a segment's add button shows a picture of it beside the button.
+	const peekArea = win.body.querySelector<HTMLElement>('.run-wrap')!;
+	const peek = win.body.querySelector<HTMLElement>('.run-peek')!;
+	const peekImg = peek.querySelector('img')!;
+	const peekText = peek.querySelector('p')!;
+	let peekFor: HTMLElement | null = null;
+	function showPeek(btn: HTMLElement) {
+		const r = findRecipe(btn.dataset.add!);
+		if (!r) return;
+		peekFor = btn;
+		peekImg.src = segmentThumb(r);
+		peekText.innerHTML = `${btn.dataset.add} <span>${bandName(r.tier)}</span>`;
+		// Beside the button, flipped to the other side or above it when it would run off the game.
+		const box = peekArea.getBoundingClientRect();
+		const b = btn.getBoundingClientRect();
+		const w = peek.offsetWidth || 220;
+		const h = peek.offsetHeight || 130;
+		let x = b.right - box.left + 10;
+		if (x + w > box.width - 4) x = b.left - box.left - w - 10;
+		if (x < 4) x = Math.min(Math.max(4, b.left - box.left), box.width - w - 4);
+		let y = b.top - box.top + b.height / 2 - h / 2;
+		y = Math.min(Math.max(4, y), box.height - h - 4);
+		peek.style.left = `${x}px`;
+		peek.style.top = `${y}px`;
+		peek.classList.add('is-on');
+	}
+	function hidePeek() {
+		peekFor = null;
+		peek.classList.remove('is-on');
+	}
+	picker.addEventListener('pointerover', (e) => {
+		if (e.pointerType !== 'mouse') return;
+		const btn = (e.target as Element).closest<HTMLElement>('[data-add]');
+		if (btn && btn !== peekFor) showPeek(btn);
+		else if (!btn && peekFor) hidePeek();
+	});
+	picker.addEventListener('pointerleave', hidePeek);
+	picker.addEventListener('focusin', (e) => {
+		const btn = (e.target as Element).closest<HTMLElement>('[data-add]');
+		if (btn && btn.matches(':focus-visible')) showPeek(btn);
+		else hidePeek();
+	});
+	picker.addEventListener('focusout', hidePeek);
+	picker.addEventListener('scroll', hidePeek);
+
+	/** The planned run drawn end to end, in its own window over the game. */
+	function showWholeRun() {
+		const recipes = picks.map((id) => findRecipe(id)!);
+		const total = recipes.length;
+		const view = openWindow({ title: 'Your run, end to end', width: 900 });
+		view.body.innerHTML = `
+			<p class="secret-hint" style="margin-top:0">The first roof, then your ${total} segment${total === 1 ? '' : 's'} in order. Scroll sideways to follow the run.</p>
+			<div class="run-strip" tabindex="0" aria-label="The whole run, drawn end to end"></div>
+			<p class="run-strip-legend">
+				<span><i style="background:#ff6b5c"></i>hazard</span><span><i style="background:#7fe3ff"></i>vent, climbing wall, grapple</span>
+				<span><i style="background:#9fb0d0"></i>drone</span><span><i style="background:#c9cfdc"></i>train</span>
+				<span><i style="background:#56607d"></i>ledge or deck</span><span><i style="background:#6b5a45"></i>crate</span>
+			</p>`;
+		renderRunStrip(view.body.querySelector<HTMLElement>('.run-strip')!, recipes, picks);
+	}
 
 	function reset() {
 		// A plan's segments are queued again on every restart; otherwise the run is all random.

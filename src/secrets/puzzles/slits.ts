@@ -1,4 +1,4 @@
-// Certifications → "interference": Both Slits at Once. A dark room with a matchbox, a candle, a wall with
+// Certifications → "interference": Interference. A dark room with a matchbox, a candle, a wall with
 // two thin slits on a floor track, and a far wall. Strike a match (drag it quickly across the box's
 // striker), light the candle with it before it burns down, then slide the slit wall along the floor
 // until the close-up of the far wall shows interference fringes; hold them there to solve.
@@ -86,7 +86,7 @@ function geometry(wallX: number) {
 
 export function launch(): void {
 	injectStyle();
-	const win = openWindow({ title: 'Both Slits at Once', width: 820 });
+	const win = openWindow({ title: 'Interference', width: 820 });
 	win.root.classList.add('ds-window');
 	win.body.innerHTML = `
 		<div class="ds">
