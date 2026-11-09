@@ -28,6 +28,8 @@ const STYLE = `
 .sx-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
 @media (max-width: 520px) { .sx-cols { grid-template-columns: 1fr; } }
 .sx-euler { font-size: 0.85rem; white-space: pre-wrap; margin: 0; }
+.sx-fact { margin: 10px 0 0; padding: 8px 12px; border-left: 2px solid rgba(255, 220, 140, 0.6); font-size: 0.9rem; }
+.sx-fact b { color: #ffe7a3; font-weight: 600; }
 .sx-goals { list-style: none; margin: 0; padding: 0; font-size: 0.86rem; }
 .sx-goals li { padding: 1px 0; color: var(--text-muted); }
 .sx-goals li::before { content: '○ '; }
@@ -50,6 +52,14 @@ type V4 = [number, number, number, number];
 
 const NAMES = ['0-simplex: a point', '1-simplex: a segment', '2-simplex: a triangle', '3-simplex: a tetrahedron', '4-simplex: a 3D slice'];
 const SHORT = ['point', 'segment', 'triangle', 'tetra', '4-simplex'];
+/** Plain-language facts shown under each shape: where simplices turn up in graphics and maths. */
+const FACTS = [
+	'<b>Where it turns up:</b> every 3D model in a game or film starts as a list of points like this one, called vertices. Everything else is built by joining them up.',
+	'<b>Where it turns up:</b> join two points and you have the edges of a wireframe. Graphics cards have a mode just for drawing segments, used for grids, outlines and laser beams.',
+	'<b>Where it turns up:</b> almost everything you see in a video game is made of triangles, and a graphics card can draw millions of them every frame. Three points always lie flat, which is also why a three-legged stool never wobbles.',
+	'<b>Where it turns up:</b> engineers chop solid objects into millions of tiny tetrahedra to simulate car crashes, airflow over wings and heat in engines. It is also the shape of a four-sided die and of a methane molecule.',
+	'<b>Where it turns up:</b> any mix of five things that adds up to 100% (say, a smoothie of five fruits) is a point inside a 4-simplex. That is why the shape gives its name to the <i>simplex method</i>, the classic way computers plan the cheapest schedules and deliveries. We can’t see 4D, so we slice it, the way a CT scan shows a body as slices: slide the cut and find the slice with the most corners.',
+];
 
 const T = 0.75;
 const SIMPLICES: V3[][] = [
@@ -161,7 +171,7 @@ export function launch(): void {
 		<p class="secret-hint">${
 			already
 				? 'You have already solved this one. Play on.'
-				: 'Press <b>0</b>–<b>4</b> (or tap below) to build a simplex. Drag to spin it.'
+				: 'A <b>simplex</b> is the simplest shape there is in any number of dimensions: one more corner than the dimension, with every corner joined to every other. Press <b>0</b>–<b>4</b> (or tap below) to build one, and drag to spin it.'
 		}</p>
 		<div class="sx-stage"><p class="sx-name"></p></div>
 		<div class="sx-keys" role="group" aria-label="Simplex dimension"></div>
@@ -173,6 +183,7 @@ export function launch(): void {
 			<div><p class="sx-euler secret-code"></p></div>
 			<ul class="sx-goals"></ul>
 		</div>
+		<p class="sx-fact" hidden></p>
 		<div class="sx-winbox"></div>`;
 	const stage = body.querySelector<HTMLElement>('.sx-stage')!;
 	const nameEl = body.querySelector<HTMLElement>('.sx-name')!;
@@ -184,6 +195,7 @@ export function launch(): void {
 	const tOut = body.querySelector<HTMLOutputElement>('.sx-tout')!;
 	const eulerEl = body.querySelector<HTMLElement>('.sx-euler')!;
 	const goalsEl = body.querySelector<HTMLUListElement>('.sx-goals')!;
+	const factEl = body.querySelector<HTMLElement>('.sx-fact')!;
 	const winBox = body.querySelector<HTMLElement>('.sx-winbox')!;
 
 	const buttons: HTMLButtonElement[] = [];
@@ -203,9 +215,10 @@ export function launch(): void {
 	let foundPrism = false;
 	let won = false;
 	const renderGoals = () => {
-		const items = made.map((m, d) => ({ text: `Build a ${d}-simplex`, done: m }));
+		const GOAL = ['a point (0D)', 'a segment (1D)', 'a triangle (2D)', 'a tetrahedron (3D)', 'the 4-simplex (4D)'];
+		const items = made.map((m, d) => ({ text: `Build ${GOAL[d]}`, done: m }));
 		items.push({
-			text: foundPrism ? 'Found the triangular prism: 6 corners' : 'Find the slice with the most corners',
+			text: foundPrism ? 'Found the triangular prism: 6 corners' : 'Slice the 4-simplex: find the slice with the most corners',
 			done: foundPrism,
 		});
 		goalsEl.innerHTML = '';
@@ -219,8 +232,9 @@ export function launch(): void {
 			won = true;
 			solve(ID);
 			winBox.innerHTML = `<p class="sx-win"><b style="color:#ffe7a3">Every dimension, accounted for.</b>
-				The middle slice of a 4-simplex is a triangular prism: two of its corners on one side of the cut, three on the other,
-				and 2 × 3 = 6 edges pierced. And through it all, V − E + F − C never budged from 1.</p>`;
+				The richest slice of a 4-simplex is a triangular prism. The cut puts 2 of its 5 corners on one side and 3 on the other,
+				so it crosses the 2 × 3 = 6 edges between them, and each crossing becomes a corner of the slice. And every shape
+				you built passed the same test: corners − edges + faces − solids came to 1.</p>`;
 		}
 	};
 
@@ -344,6 +358,8 @@ export function launch(): void {
 		});
 		sliders.hidden = d !== 4;
 		nameEl.textContent = NAMES[d];
+		factEl.innerHTML = FACTS[d];
+		factEl.hidden = false;
 		if (d < 4) {
 			const pts = SIMPLICES[d];
 			const edges: [number, number][] = [];
@@ -356,10 +372,12 @@ export function launch(): void {
 			build(pts, edges, faces, faceMat);
 			const n = d + 1;
 			const counts = [binom(n, 1), binom(n, 2), binom(n, 3), binom(n, 4)];
+			const names = [['corner', 'corners'], ['edge', 'edges'], ['face', 'faces'], ['solid', 'solids']];
+			const parts = counts.map((c, i) => (c ? `${c} ${names[i][c === 1 ? 0 : 1]}` : '')).filter(Boolean);
 			eulerEl.textContent =
-				`${NAMES[d]}\nV − E + F − C\n= ${counts[0]} − ${counts[1]} + ${counts[2]} − ${counts[3]} = ${
+				`${parts.join(', ')}\n\ncorners − edges + faces − solids\n= ${counts[0]} − ${counts[1]} + ${counts[2]} − ${counts[3]} = ${
 					counts[0] - counts[1] + counts[2] - counts[3]
-				}\n\nA simplex can be shrunk to a point,\nso its Euler characteristic is 1.`;
+				}\nIt’s 1 for every simplex (Euler’s rule).`;
 		} else {
 			updateSlice();
 		}
@@ -381,15 +399,14 @@ export function launch(): void {
 		const V = sl.points.length;
 		const E = sl.edges.length;
 		const F = sl.faces.length;
-		const C = V >= 4 ? 1 : 0;
 		if (V === 6 && !foundPrism) {
 			foundPrism = true;
 			chime('open');
 		}
-		const kind = V === 4 ? 'a tetrahedron' : V === 6 ? 'a triangular prism' : `${V} corners`;
+		const kind = V === 3 ? 'a triangle' : V === 4 ? 'a tetrahedron' : V === 6 ? 'a triangular prism' : `${V} corners`;
 		eulerEl.textContent =
-			`Slice at w = ${h.toFixed(2)}: ${kind}\nV − E + F − C\n= ${V} − ${E} + ${F} − ${C} = ${V - E + F - C}` +
-			`\n\nThe whole 4-simplex:\n5 − 10 + 10 − 5 + 1 = 1\n(dashed: its shadow in 3D)`;
+			`This slice: ${kind}\n${V} corners, ${E} edges, ${F} faces` +
+			`\n\nThe whole 4-simplex has 5 corners,\n10 edges, 10 faces, 5 solids and one 4D cell.\nDashed lines: its shadow in 3D.`;
 		renderGoals();
 	}
 	wInput.addEventListener('input', () => dim === 4 && updateSlice());
