@@ -41,6 +41,24 @@ const CSS = `
 	touch-action: none; cursor: default; }
 .ds-hint { margin: 0; color: var(--text-muted); font-size: .9rem; }
 .ds-bar { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: center; }
+.ds-turn { display: none; }
+/* Phones held upright: suggest turning sideways. */
+@media (orientation: portrait) and (max-width: 600px) {
+	.ds-turn { display: block; margin: 0; font-size: 0.85rem; color: var(--text-muted); }
+}
+/* Phones and small tablets held sideways: the window fills the screen, the room is as big as the height
+   allows, and the hint and button sit in a column beside it. */
+@media (orientation: landscape) and (max-height: 560px) {
+	.secret-backdrop:has(.ds-window) { padding: 0; align-items: stretch; justify-items: stretch; overflow: hidden; }
+	.ds-window { width: 100%; max-width: none; height: 100%; max-height: none; border-radius: 0; border: 0; }
+	.ds-window .secret-titlebar { padding: 2px 6px 2px 12px; }
+	.ds-window .secret-title { font-size: 0.85rem; }
+	.ds-window .secret-body { flex: 1; padding: 6px 8px; overflow: hidden; }
+	.ds-window .ds { grid-template-columns: auto 1fr; align-items: start; height: 100%; }
+	.ds-window .ds-canvas { width: min(calc(100vw - 190px), calc((100dvh - 52px) * 16 / 9)); }
+	.ds-window .ds-bar { flex-direction: column; align-items: stretch; justify-content: flex-start; }
+	.ds-window .ds-hint { font-size: 0.82rem; }
+}
 `;
 
 function injectStyle() {
@@ -67,6 +85,7 @@ function geometry(wallX: number) {
 export function launch(): void {
 	injectStyle();
 	const win = openWindow({ title: 'Both Slits at Once', width: 820 });
+	win.root.classList.add('ds-window');
 	win.body.innerHTML = `
 		<div class="ds">
 			<canvas class="ds-canvas" aria-label="A dark room with a matchbox, a candle, a wall with two slits and a far wall"></canvas>
@@ -74,6 +93,7 @@ export function launch(): void {
 				<p class="ds-hint"></p>
 				<button type="button" class="secret-btn ds-reset">Start over</button>
 			</div>
+			<p class="ds-turn">Turn your phone sideways for a bigger view.</p>
 		</div>`;
 	const canvas = win.body.querySelector('canvas')!;
 	const ctx = canvas.getContext('2d')!;
@@ -125,24 +145,40 @@ export function launch(): void {
 	}
 
 	// ---- Input ------------------------------------------------------------------------------------
+	/** Room units per screen pixel: bigger on a small screen, so touch targets can stay finger-sized. */
+	let unit = 1;
+	/** How far above the fingertip a touch holds the match, in room units (0 for a mouse). */
+	let lift = 0;
 	const pt = (e: PointerEvent) => {
 		const r = canvas.getBoundingClientRect();
+		unit = CW / Math.max(1, r.width);
 		return { x: ((e.clientX - r.left) / r.width) * CW, y: ((e.clientY - r.top) / r.height) * CH };
 	};
+	/** A target radius of at least `screen` CSS pixels. */
+	const reach = (base: number, screen: number) => Math.max(base, screen * unit);
 	const near = (a: { x: number; y: number }, b: { x: number; y: number }, d: number) => Math.hypot(a.x - b.x, a.y - b.y) < d;
-	const onWall = (p: { x: number; y: number }) => Math.abs(p.x - wallX) < 18 && p.y > FLOOR - 175 && p.y < FLOOR + 6;
+	const onWall = (p: { x: number; y: number }) => Math.abs(p.x - wallX) < reach(18, 22) && p.y > FLOOR - 175 && p.y < FLOOR + 20;
 	const onMatch = (p: { x: number; y: number }) =>
-		near(p, match, 22) || (p.x > match.x - 46 && p.x < match.x + 6 && Math.abs(p.y - match.y) < 12);
+		near(p, match, reach(22, 24)) || (p.x > match.x - 46 && p.x < match.x + 6 && Math.abs(p.y - match.y) < reach(12, 20));
+	const onBox = (p: { x: number; y: number }) => {
+		const m = reach(10, 16);
+		return p.x > box.x - m && p.x < box.x + box.w + m && p.y > box.y - m && p.y < box.y + box.h + m;
+	};
+	/** Where the match head goes for a pointer at p. */
+	const headAt = (p: { x: number; y: number }) => ({ x: p.x, y: p.y - lift });
 
 	canvas.addEventListener('pointerdown', (e) => {
 		const p = pt(e);
 		canvas.setPointerCapture(e.pointerId);
-		if (candle && onWall(p)) {
+		lift = e.pointerType === 'mouse' ? 0 : 34 * unit;
+		// Once the candle is lit, a finger can slide the wall from anywhere along the floor past the table.
+		const wallGrab = onWall(p) || (e.pointerType !== 'mouse' && p.x > TRACK[0] - 20);
+		if (candle && wallGrab) {
 			dragWall = p.x - wallX;
-		} else if (!candle && (onMatch(p) || (p.x > box.x && p.x < box.x + box.w && p.y > box.y - 10 && p.y < box.y + box.h))) {
+		} else if (!candle && (onMatch(p) || onBox(p))) {
 			held = true;
-			match = { x: p.x, y: p.y };
-			lastPt = { ...p, t: performance.now() };
+			match = headAt(p);
+			lastPt = { ...match, t: performance.now() };
 		}
 	});
 	canvas.addEventListener('pointermove', (e) => {
@@ -154,14 +190,16 @@ export function launch(): void {
 		canvas.style.cursor = (candle && onWall(p)) || (!candle && onMatch(p)) ? 'grab' : 'default';
 		if (!held) return;
 		const now = performance.now();
+		const head = headAt(p);
 		const dt = Math.max(1, now - lastPt.t) / 1000;
-		const moved = Math.hypot(p.x - lastPt.x, p.y - lastPt.y);
+		const moved = Math.hypot(head.x - lastPt.x, head.y - lastPt.y);
 		const speed = moved / dt;
-		lastPt = { ...p, t: now };
-		match = { x: p.x, y: p.y };
+		lastPt = { ...head, t: now };
+		match = head;
 		// Striking: every fast 35 px scraped along the strip (a swipe across it, or scrubbing back and
 		// forth) is one strike, which catches half the time.
-		const inside = p.x > striker.x && p.x < striker.x + striker.w && p.y > striker.y - 8 && p.y < striker.y + striker.h + 8;
+		const band = reach(8, 14);
+		const inside = head.x > striker.x - band && head.x < striker.x + striker.w + band && head.y > striker.y - band && head.y < striker.y + striker.h + band;
 		if (inside && !matchLit) {
 			scraped = speed > 650 ? scraped + moved : 0;
 			if (scraped >= 35) {
@@ -172,7 +210,7 @@ export function launch(): void {
 					updateHint();
 				} else {
 					for (let i = 0; i < 6; i++)
-						sparks.push({ x: p.x, y: p.y, vx: (Math.random() - 0.3) * 160, vy: -Math.random() * 120, life: 0.3 + Math.random() * 0.3 });
+						sparks.push({ x: head.x, y: head.y, vx: (Math.random() - 0.3) * 160, vy: -Math.random() * 120, life: 0.3 + Math.random() * 0.3 });
 				}
 			}
 		} else scraped = 0;
@@ -207,7 +245,7 @@ export function launch(): void {
 				held = false;
 				match = { x: box.x + box.w + 18, y: TABLE_TOP - 3 };
 				updateHint();
-			} else if (!candle && near(match, wick, 16)) {
+			} else if (!candle && near(match, wick, reach(16, 14))) {
 				candleHeat += dt;
 				if (candleHeat > 0.5) {
 					candle = true;
@@ -335,16 +373,18 @@ export function launch(): void {
 		// Darkness, with light where the flames are.
 		lctx.globalCompositeOperation = 'source-over';
 		lctx.clearRect(0, 0, CW, CH);
-		lctx.fillStyle = 'rgba(2, 1, 6, 0.94)';
+		lctx.fillStyle = candle ? 'rgba(2, 1, 6, 0.94)' : 'rgba(2, 1, 6, 0.86)';
 		lctx.fillRect(0, 0, CW, CH);
 		lctx.globalCompositeOperation = 'destination-out';
-		const glow = (x: number, y: number, r: number) => {
+		const glow = (x: number, y: number, r: number, strength = 1) => {
 			const g = lctx.createRadialGradient(x, y, 0, x, y, r);
-			g.addColorStop(0, 'rgba(0,0,0,1)');
+			g.addColorStop(0, `rgba(0,0,0,${strength})`);
 			g.addColorStop(1, 'rgba(0,0,0,0)');
 			lctx.fillStyle = g;
 			lctx.fillRect(x - r, y - r, r * 2, r * 2);
 		};
+		// Before anything is lit, enough dim light to make out the table, matchbox and candle.
+		if (!candle) glow(110, TABLE_TOP - 20, 170, 0.55);
 		const flick = 1 + Math.sin(t * 9) * 0.03;
 		if (matchLit) glow(match.x, match.y, 120 * flick);
 		if (candle) {
