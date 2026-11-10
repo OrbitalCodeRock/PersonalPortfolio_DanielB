@@ -39,6 +39,7 @@ export const repos = {
 export const papers = {
 	upfd: 'https://dl.acm.org/doi/10.1145/3404835.3462990',
 	spiderPoster: 'https://drive.google.com/file/d/15C8s0tFzJIOPP5c0G1qShth_mTsve0dC/view?usp=sharing',
+	isuTranscript: 'https://drive.google.com/file/d/1Si6pSyko6V3LZCu--6jv6MEDEE8-NLpI/view?usp=sharing',
 };
 
 export const quantumBlog = [
