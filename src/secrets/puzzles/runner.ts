@@ -151,13 +151,13 @@ const CSS = `
 .run-peek p { margin: 5px 0 0; font: 600 0.75rem ui-monospace, Consolas, monospace; color: #ffe7a3; }
 .run-peek p span { color: var(--text-muted); font-weight: 400; }
 @media (hover: none) { .run-peek { display: none; } }
-.run-full { position: absolute; inset: 0; z-index: 4; overflow: auto; padding: 12px 14px; border-radius: 10px;
+.run-whole { position: absolute; inset: 0; z-index: 4; overflow: auto; padding: 12px 14px; border-radius: 10px;
 	background: rgba(8, 10, 28, 0.98); color: #eef0ff; font-size: 0.85rem; display: grid; gap: 8px; align-content: start;
 	grid-auto-rows: max-content; }
-.run-full[hidden] { display: none; }
-.run-full-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
-.run-full-head h3 { margin: 0; font-size: 1rem; color: #ffe7a3; }
-.run-full-head p { margin: 0; color: var(--text-muted); flex-basis: 100%; }
+.run-whole[hidden] { display: none; }
+.run-whole-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.run-whole-head h3 { margin: 0; font-size: 1rem; color: #ffe7a3; }
+.run-whole-head p { margin: 0; color: var(--text-muted); flex-basis: 100%; }
 .run-strip { display: flex; overflow-x: auto; gap: 0; padding-bottom: 8px; }
 .run-strip-seg { margin: 0; flex: none; display: grid; gap: 4px; }
 .run-strip-seg figcaption { font: 600 0.75rem ui-monospace, Consolas, monospace; color: #ffe7a3; padding-left: 4px;
@@ -210,7 +210,7 @@ export function launch(opts: LaunchOptions = {}): void {
 			<button type="button" class="secret-btn run-replay" hidden>↻ Replay this run <kbd>F</kbd></button>
 			<div class="run-pick" hidden role="dialog" aria-label="Choose segments"></div>
 			<div class="run-peek" aria-hidden="true"><img alt=""><p></p></div>
-			<div class="run-full" hidden role="dialog" aria-label="Your run, end to end"></div>
+			<div class="run-whole" hidden role="dialog" aria-label="Your run, end to end"></div>
 		</div>
 		<div class="run-bar">
 			<p class="secret-hint">Jump: Space, ↑, W, or tap/click the game. Hold for a higher jump. R restarts. Rate a segment with 1 (👍) or 2 (👎).</p>
@@ -639,12 +639,12 @@ export function launch(opts: LaunchOptions = {}): void {
 	 * The planned run drawn end to end, in a panel over the picker inside the game (not a separate window,
 	 * which full screen would hide: the browser only shows the full-screen element).
 	 */
-	const fullPanel = win.body.querySelector<HTMLElement>('.run-full')!;
+	const fullPanel = win.body.querySelector<HTMLElement>('.run-whole')!;
 	function showWholeRun() {
 		const recipes = picks.map((id) => findRecipe(id)!);
 		const total = recipes.length;
 		fullPanel.innerHTML = `
-			<div class="run-full-head">
+			<div class="run-whole-head">
 				<h3>Your run, end to end</h3>
 				<button type="button" class="secret-btn" data-act="back">Back to segments</button>
 				<p>The first roof, then your ${total} segment${total === 1 ? '' : 's'} in order. Scroll sideways to follow the run.</p>
@@ -658,7 +658,7 @@ export function launch(opts: LaunchOptions = {}): void {
 		fullPanel.hidden = false;
 		hidePeek();
 		// As tall as the panel allows once its heading and key are in, so it fits a phone held sideways.
-		const head = fullPanel.querySelector<HTMLElement>('.run-full-head')!.offsetHeight;
+		const head = fullPanel.querySelector<HTMLElement>('.run-whole-head')!.offsetHeight;
 		const legend = fullPanel.querySelector<HTMLElement>('.run-strip-legend')!.offsetHeight;
 		const room = fullPanel.clientHeight - head - legend - 100;
 		renderRunStrip(fullPanel.querySelector<HTMLElement>('.run-strip')!, recipes, picks, Math.max(90, room));
