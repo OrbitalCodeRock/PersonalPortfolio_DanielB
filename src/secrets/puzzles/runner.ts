@@ -109,6 +109,11 @@ const CSS = `
 .run-vote button:hover, .run-vote button:focus-visible { background: rgba(255, 231, 163, 0.16); border-color: rgba(255, 231, 163, 0.55); }
 .run-vote kbd { font: 600 0.68rem ui-monospace, Consolas, monospace; opacity: 0.7; }
 .run-replay { position: absolute; left: 50%; bottom: 9%; transform: translateX(-50%); }
+.run-pause { position: absolute; top: 9%; right: 10px; width: 40px; height: 40px; padding: 0; border-radius: 50%;
+	display: grid; place-items: center; cursor: pointer; font: 700 0.85rem ui-sans-serif, system-ui, sans-serif; letter-spacing: -1px;
+	color: #eef0ff; background: rgba(8, 10, 28, 0.5); border: 1px solid rgba(255, 255, 255, 0.2); opacity: 0.7; touch-action: manipulation; }
+.run-pause:hover, .run-pause:focus-visible { opacity: 1; border-color: rgba(255, 231, 163, 0.6); }
+.run-pause[hidden] { display: none; }
 .run-replay kbd { font: 600 0.72rem ui-monospace, Consolas, monospace; opacity: 0.7; margin-left: 4px; }
 .run-tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .run-mode { color: var(--text-muted); font-size: 0.85rem; }
@@ -208,15 +213,17 @@ export function launch(opts: LaunchOptions = {}): void {
 				<button type="button" data-vote="-1" aria-label="Thumbs down (key 2)" title="Thumbs down (2)">👎<kbd>2</kbd></button>
 			</div>
 			<button type="button" class="secret-btn run-replay" hidden>↻ Replay this run <kbd>F</kbd></button>
+			<button type="button" class="run-pause" hidden aria-label="Pause (P)" title="Pause (P)">❚❚</button>
 			<div class="run-pick" hidden role="dialog" aria-label="Choose segments"></div>
 			<div class="run-peek" aria-hidden="true"><img alt=""><p></p></div>
 			<div class="run-whole" hidden role="dialog" aria-label="Your run, end to end"></div>
 		</div>
 		<div class="run-bar">
-			<p class="secret-hint">Jump: Space, ↑, W, or tap/click the game. Hold for a higher jump. R restarts. Rate a segment with 1 (👍) or 2 (👎).</p>
+			<p class="secret-hint">Jump: Space, ↑, W, or tap/click the game. Hold for a higher jump. P pauses. R restarts. Rate a segment with 1 (👍) or 2 (👎).</p>
 			<div class="run-tools">
 				<span class="run-mode"></span>
 				<button type="button" class="secret-btn run-random" hidden>Random runs</button>
+				<button type="button" class="secret-btn run-pausetool" hidden>Pause</button>
 				<button type="button" class="secret-btn run-choose">Choose segments</button>
 				<button type="button" class="secret-btn run-sound" aria-pressed="true">Sound: on</button>
 				<button type="button" class="secret-btn run-full" hidden>Full screen</button>
@@ -238,9 +245,21 @@ export function launch(opts: LaunchOptions = {}): void {
 		if (document.fullscreenElement === win.root) void document.exitFullscreen();
 	});
 	const canvas = win.body.querySelector('canvas')!;
-	const dpr = Math.min(2, window.devicePixelRatio || 1);
-	canvas.width = CW * dpr;
-	canvas.height = CH * dpr;
+	// Drawn at the size it's shown (times the screen's pixel density), so it stays sharp when the window
+	// grows, e.g. full screen on a big monitor; the game itself always works in CW × CH units.
+	let dpr = 0;
+	const fitCanvas = () => {
+		const shown = canvas.clientWidth || CW;
+		const ratio = Math.min(4, Math.max(1, (shown * (window.devicePixelRatio || 1)) / CW));
+		if (Math.abs(ratio - dpr) < 0.01) return;
+		dpr = ratio;
+		canvas.width = Math.round(CW * dpr);
+		canvas.height = Math.round(CH * dpr);
+	};
+	fitCanvas();
+	const resizeWatch = new ResizeObserver(fitCanvas);
+	resizeWatch.observe(canvas);
+	win.onClose(() => resizeWatch.disconnect());
 	const ctx = canvas.getContext('2d')!;
 
 	// Sound (footsteps, jumps, wind); the toggle is remembered.
@@ -317,6 +336,8 @@ export function launch(opts: LaunchOptions = {}): void {
 	let signs: Box[] = [];
 	let drones: DroneState[] = [];
 	let mode: 'ready' | 'running' | 'dead' = 'ready';
+	/** Mid-run pause: the run, its clock and the rating prompt's countdown all stop. */
+	let paused = false;
 	let time = 0;
 	let deathCause = '';
 	function sync() {
@@ -683,6 +704,7 @@ export function launch(opts: LaunchOptions = {}): void {
 	});
 
 	function reset() {
+		setPaused(false);
 		// A plan's segments are queued again on every restart; otherwise the run is all random.
 		sim.force(plan ? plan.segments.map((e) => [e.recipe, e.recipe.tier] as [Recipe, number]) : []);
 		sync();
@@ -1380,6 +1402,25 @@ export function launch(opts: LaunchOptions = {}): void {
 	}
 
 	function drawOverlay() {
+		if (mode === 'running' && paused) {
+			ctx.fillStyle = 'rgba(4, 6, 18, 0.55)';
+			ctx.fillRect(0, 0, CW, CH);
+			scaled(CW / 2, CH / 2, () => {
+				ctx.textAlign = 'center';
+				ctx.fillStyle = GOLD;
+				ctx.font = 'italic 34px Georgia, serif';
+				ctx.fillText('Paused', CW / 2, CH / 2 - 30);
+				ctx.font = '17px ui-sans-serif, system-ui, sans-serif';
+				ctx.fillStyle = '#eef0ff';
+				const lines = [
+					`${fmtTime(time)} · ${Math.max(0, Math.floor(P.maxX - 4))} m`,
+					prompt ? 'Rate that segment above while you’re here.' : '',
+					'Press P, Space or tap to carry on.',
+				].flatMap((t) => (t ? wrap(t, (CW * 0.9) / uiScale) : []));
+				lines.forEach((t, i) => ctx.fillText(t, CW / 2, CH / 2 + 8 + i * 26));
+			});
+			return;
+		}
 		if (mode === 'running') return;
 		ctx.fillStyle = 'rgba(4, 6, 18, 0.55)';
 		ctx.fillRect(0, 0, CW, CH);
@@ -1442,8 +1483,36 @@ export function launch(opts: LaunchOptions = {}): void {
 		drawOverlay();
 	}
 
+	// ---- Pausing --------------------------------------------------------------------------------
+	const pauseBtn = win.body.querySelector<HTMLButtonElement>('.run-pause')!;
+	const pauseTool = win.body.querySelector<HTMLButtonElement>('.run-pausetool')!;
+	function setPaused(on: boolean) {
+		on = on && mode === 'running';
+		if (on === paused) return;
+		paused = on;
+		release();
+		pauseBtn.textContent = paused ? '▶' : '❚❚';
+		pauseBtn.setAttribute('aria-label', paused ? 'Resume (P)' : 'Pause (P)');
+		pauseBtn.title = paused ? 'Resume (P)' : 'Pause (P)';
+		pauseTool.textContent = paused ? 'Resume' : 'Pause';
+	}
+	for (const b of [pauseBtn, pauseTool]) {
+		b.addEventListener('click', () => setPaused(!paused));
+		// Not a jump on the game underneath.
+		b.addEventListener('pointerdown', (e) => e.stopPropagation());
+	}
+	// Leaving the tab or the window mid-run pauses it, so stepping away doesn't end the run.
+	const onHide = () => {
+		if (document.hidden) setPaused(true);
+	};
+	const onBlur = () => setPaused(true);
+	document.addEventListener('visibilitychange', onHide);
+	window.addEventListener('blur', onBlur);
+
 	// ---- Input and loop ------------------------------------------------------------------------
 	function press() {
+		// While paused, a jump (key or tap) carries on instead of jumping.
+		if (paused) return setPaused(false);
 		sync();
 		if (mode === 'ready') {
 			sim.start();
@@ -1468,6 +1537,8 @@ export function launch(opts: LaunchOptions = {}): void {
 			e.preventDefault();
 			sound.wake();
 			if (!e.repeat) press();
+		} else if (e.code === 'KeyP') {
+			setPaused(!paused);
 		} else if (e.code === 'KeyR') {
 			reset();
 		} else if (e.code === 'Digit1' || e.code === 'Numpad1') {
@@ -1500,6 +1571,15 @@ export function launch(opts: LaunchOptions = {}): void {
 	function frame(now: number) {
 		const dt = Math.min(0.05, (now - last) / 1000);
 		last = now;
+		if (paused) {
+			acc = 0;
+			sound.setWind(0);
+			sound.setScrape(false);
+			sound.setRumble(0);
+			draw(now);
+			raf = requestAnimationFrame(frame);
+			return;
+		}
 		acc += dt;
 		while (acc >= STEP) {
 			sim.step(STEP);
@@ -1507,6 +1587,9 @@ export function launch(opts: LaunchOptions = {}): void {
 		}
 		sync();
 		trackSegment();
+		if (mode !== 'running' && paused) setPaused(false);
+		const canPause = mode === 'running' && !picking;
+		if (pauseBtn.hidden === canPause) pauseBtn.hidden = pauseTool.hidden = !canPause;
 		if (mode === 'dead') deadFor += dt;
 		if (prompt) {
 			promptLeft -= dt;
@@ -1540,6 +1623,8 @@ export function launch(opts: LaunchOptions = {}): void {
 		sound.close();
 		document.removeEventListener('keydown', onKeyDown);
 		document.removeEventListener('keyup', onKeyUp);
+		document.removeEventListener('visibilitychange', onHide);
+		window.removeEventListener('blur', onBlur);
 		if (mode === 'running' && time > best) setData('now-best', time);
 		setData('now-hints', seenHints);
 	});
