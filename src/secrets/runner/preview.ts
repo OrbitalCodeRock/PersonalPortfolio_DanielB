@@ -207,10 +207,10 @@ export function segmentThumb(recipe: Recipe, w = 200, h = 96): string {
  * The whole run drawn end to end into `root`: one canvas per segment at a shared scale and height, so
  * there's no giant canvas (phones cap their size), with each segment's name over it.
  */
-export function renderRunStrip(root: HTMLElement, recipes: Recipe[], labels: string[]) {
+export function renderRunStrip(root: HTMLElement, recipes: Recipe[], labels: string[], maxHeight = 420) {
 	const segs = layoutRun(recipes);
 	const [lo, hi] = heightRange(segs);
-	const scale = Math.max(2.5, Math.min(6, 420 / (hi - lo)));
+	const scale = Math.max(1.5, Math.min(6, maxHeight / (hi - lo)));
 	const h = Math.ceil((hi - lo) * scale);
 	const dpr = Math.min(2, window.devicePixelRatio || 1);
 	root.innerHTML = '';

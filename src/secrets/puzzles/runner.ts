@@ -151,6 +151,13 @@ const CSS = `
 .run-peek p { margin: 5px 0 0; font: 600 0.75rem ui-monospace, Consolas, monospace; color: #ffe7a3; }
 .run-peek p span { color: var(--text-muted); font-weight: 400; }
 @media (hover: none) { .run-peek { display: none; } }
+.run-full { position: absolute; inset: 0; z-index: 4; overflow: auto; padding: 12px 14px; border-radius: 10px;
+	background: rgba(8, 10, 28, 0.98); color: #eef0ff; font-size: 0.85rem; display: grid; gap: 8px; align-content: start;
+	grid-auto-rows: max-content; }
+.run-full[hidden] { display: none; }
+.run-full-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.run-full-head h3 { margin: 0; font-size: 1rem; color: #ffe7a3; }
+.run-full-head p { margin: 0; color: var(--text-muted); flex-basis: 100%; }
 .run-strip { display: flex; overflow-x: auto; gap: 0; padding-bottom: 8px; }
 .run-strip-seg { margin: 0; flex: none; display: grid; gap: 4px; }
 .run-strip-seg figcaption { font: 600 0.75rem ui-monospace, Consolas, monospace; color: #ffe7a3; padding-left: 4px;
@@ -203,6 +210,7 @@ export function launch(opts: LaunchOptions = {}): void {
 			<button type="button" class="secret-btn run-replay" hidden>↻ Replay this run <kbd>F</kbd></button>
 			<div class="run-pick" hidden role="dialog" aria-label="Choose segments"></div>
 			<div class="run-peek" aria-hidden="true"><img alt=""><p></p></div>
+			<div class="run-full" hidden role="dialog" aria-label="Your run, end to end"></div>
 		</div>
 		<div class="run-bar">
 			<p class="secret-hint">Jump: Space, ↑, W, or tap/click the game. Hold for a higher jump. R restarts. Rate a segment with 1 (👍) or 2 (👎).</p>
@@ -542,6 +550,7 @@ export function launch(opts: LaunchOptions = {}): void {
 	}
 	function closePicker() {
 		hidePeek();
+		hideWholeRun();
 		picking = false;
 		picker.hidden = true;
 		chooseBtn.focus();
@@ -626,21 +635,52 @@ export function launch(opts: LaunchOptions = {}): void {
 	picker.addEventListener('focusout', hidePeek);
 	picker.addEventListener('scroll', hidePeek);
 
-	/** The planned run drawn end to end, in its own window over the game. */
+	/**
+	 * The planned run drawn end to end, in a panel over the picker inside the game (not a separate window,
+	 * which full screen would hide: the browser only shows the full-screen element).
+	 */
+	const fullPanel = win.body.querySelector<HTMLElement>('.run-full')!;
 	function showWholeRun() {
 		const recipes = picks.map((id) => findRecipe(id)!);
 		const total = recipes.length;
-		const view = openWindow({ title: 'Your run, end to end', width: 900 });
-		view.body.innerHTML = `
-			<p class="secret-hint" style="margin-top:0">The first roof, then your ${total} segment${total === 1 ? '' : 's'} in order. Scroll sideways to follow the run.</p>
+		fullPanel.innerHTML = `
+			<div class="run-full-head">
+				<h3>Your run, end to end</h3>
+				<button type="button" class="secret-btn" data-act="back">Back to segments</button>
+				<p>The first roof, then your ${total} segment${total === 1 ? '' : 's'} in order. Scroll sideways to follow the run.</p>
+			</div>
 			<div class="run-strip" tabindex="0" aria-label="The whole run, drawn end to end"></div>
 			<p class="run-strip-legend">
 				<span><i style="background:#ff6b5c"></i>hazard</span><span><i style="background:#7fe3ff"></i>vent, climbing wall, grapple</span>
 				<span><i style="background:#9fb0d0"></i>drone</span><span><i style="background:#c9cfdc"></i>train</span>
 				<span><i style="background:#56607d"></i>ledge or deck</span><span><i style="background:#6b5a45"></i>crate</span>
 			</p>`;
-		renderRunStrip(view.body.querySelector<HTMLElement>('.run-strip')!, recipes, picks);
+		fullPanel.hidden = false;
+		hidePeek();
+		// As tall as the panel allows once its heading and key are in, so it fits a phone held sideways.
+		const head = fullPanel.querySelector<HTMLElement>('.run-full-head')!.offsetHeight;
+		const legend = fullPanel.querySelector<HTMLElement>('.run-strip-legend')!.offsetHeight;
+		const room = fullPanel.clientHeight - head - legend - 100;
+		renderRunStrip(fullPanel.querySelector<HTMLElement>('.run-strip')!, recipes, picks, Math.max(90, room));
+		fullPanel.querySelector<HTMLElement>('[data-act="back"]')!.focus();
 	}
+	function hideWholeRun() {
+		if (fullPanel.hidden) return;
+		fullPanel.hidden = true;
+		fullPanel.innerHTML = '';
+		picker.querySelector<HTMLElement>('[data-act="full"]')?.focus();
+	}
+	fullPanel.addEventListener('click', (e) => {
+		if ((e.target as Element).closest('[data-act="back"]')) hideWholeRun();
+	});
+	// Taps and keys in the panel are for it, not the game underneath.
+	fullPanel.addEventListener('pointerdown', (e) => e.stopPropagation());
+	fullPanel.addEventListener('keydown', (e) => {
+		if (e.key === 'Escape') {
+			e.stopPropagation();
+			hideWholeRun();
+		}
+	});
 
 	function reset() {
 		// A plan's segments are queued again on every restart; otherwise the run is all random.
