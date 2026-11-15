@@ -38,3 +38,4 @@ __pycache__/
 .wrangler/
 # Local Worker secrets (wrangler dev)
 .dev.vars
+/resume-drafts
