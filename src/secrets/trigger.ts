@@ -2,7 +2,7 @@
 // Each puzzle is its own lazily loaded chunk, so visitors who never click one download none of them.
 import type { PuzzleId } from './config';
 import { chime, closeAllWindows } from './ui';
-import { load } from './progress';
+import { allSolved, load, update } from './progress';
 
 type Launcher = () => Promise<{ launch: () => void }>;
 
@@ -82,12 +82,21 @@ export function initSecrets() {
 /** The theme unlocked by finishing the hunt (see finale.ts and secrets.css). */
 export function applyTheme() {
 	const p = load();
+	// The finale unlocks the theme when the last secret is solved in this browser. Solves that arrive another
+	// way (copied from the account on sign-in, or restored progress) never open it, so unlock it here too.
+	// update() fires secrets:change, which calls this again with the theme unlocked.
+	if (!p.unlocked && allSolved()) {
+		update((q) => {
+			q.unlocked = true;
+		});
+		return;
+	}
 	document.documentElement.toggleAttribute('data-secret-theme', !!(p.unlocked && p.theme));
 	const toggle = document.querySelector<HTMLButtonElement>('.secret-theme-toggle');
 	if (toggle) {
 		toggle.hidden = !p.unlocked;
 		toggle.setAttribute('aria-pressed', String(!!p.theme));
-		// Say which way it's set, so a tap visibly does something.
-		toggle.textContent = `✦ Aurora: ${p.theme ? 'on' : 'off'}`;
+		// Just the theme's name; the page changing color shows it's a toggle.
+		toggle.textContent = '✦ Aurora';
 	}
 }
